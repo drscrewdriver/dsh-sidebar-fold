@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Repliement « Plus » de la barre latérale",
+    "description": "Ajoute une bascule en flèche carrée sur la ligne « Plus » pour replier les lignes de panneau ajoutées de la barre latérale ; état par défaut et liste d’exclusion configurables."
+  }
+}

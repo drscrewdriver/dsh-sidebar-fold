@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Plegado de «Más» de la barra lateral",
+    "description": "Añade un conmutador de flecha cuadrada en la fila «Más» para plegar las filas de paneles añadidas de la barra lateral; estado predeterminado y lista de exclusiones configurables."
+  }
+}
