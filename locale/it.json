@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Compressione “Altro” della barra laterale",
+    "description": "Aggiunge un interruttore a freccia quadrata sulla riga “Altro” per comprimere le righe dei pannelli aggiunti della barra laterale; stato predefinito ed elenco di esclusioni configurabili."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sidebar “More” fold",
+    "description": "Puts a square arrow toggle on the “More” row to fold the sidebar’s add-on panel rows into that single line, with a configurable default state and never-fold list."
+  }
+}
