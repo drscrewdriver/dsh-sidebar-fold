@@ -32,6 +32,16 @@ folds those add-on rows away so only the “More” line remains; the arrow flip
   plugin stays out of the way instead of breaking the sidebar (`dsh-sidebar-fold:
   fold installed { mounted: false }` in the console tells you it happened).
 
+## Screenshots
+
+Expanded, rows centred — the toggle sits on the More row and the add-on rows are listed:
+
+![expanded and centre-aligned](assets/middle.png)
+
+Folded — only the plugin row and the More row remain:
+
+![folded](assets/fold.png)
+
 ## Install
 
 ```sh
@@ -41,7 +51,7 @@ dsh plugin --profile <profile> add dsh-sidebar-fold
 # local build
 npm run build && npm run verify
 npm pack --pack-destination .
-dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.1.tgz
+dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.2.tgz
 ```
 
 Then add `dsh-sidebar-fold` to the profile's `dsh.profile.bundles` list (or

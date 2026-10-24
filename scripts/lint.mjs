@@ -7,7 +7,7 @@
  *
  * 退出码：任一 `error` 级规则命中即 1；`warn` 只打印。
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, extname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -148,8 +148,24 @@ for (const script of ['lint', 'typecheck', 'test', 'build', 'verify', 'prepack']
 if (typeof pkg.scripts?.prepack === 'string' && !pkg.scripts.prepack.includes('build')) {
   fail('package-scripts', 'package.json', 'prepack does not run build (npm pack only triggers prepack)')
 }
-for (const entry of ['src/', 'lib/', 'locale/', 'dsh.plugin.json', 'cordis.patch.yml']) {
+for (const entry of ['src/', 'lib/', 'locale/', 'assets/', 'screenshots.json', 'dsh.plugin.json', 'cordis.patch.yml']) {
   if (!(pkg.files ?? []).includes(entry)) fail('package-files', 'package.json', `files[] is missing ${entry}`)
+}
+
+// ── rule: screenshots-exist — shots must be relative paths that actually ship ─
+// A packaged list that points at a missing or absolute path renders as a broken
+// image on the catalog page, which reads as "the plugin has no UI".
+const shotsFile = join(root, 'screenshots.json')
+if (existsSync(shotsFile)) {
+  const parsed = JSON.parse(read(shotsFile))
+  const shots = Array.isArray(parsed) ? parsed : (parsed.screenshots ?? [])
+  for (const shot of shots) {
+    if (typeof shot !== 'string' || shot.startsWith('/') || /^[A-Za-z]:/.test(shot)) {
+      fail('screenshots-exist', 'screenshots.json', `not a relative path: ${JSON.stringify(shot)}`)
+      continue
+    }
+    if (!existsSync(join(root, shot))) fail('screenshots-exist', 'screenshots.json', `missing file: ${shot}`)
+  }
 }
 
 // ── rule: test-discovery — every tests/*.test.ts must be listed in `npm test` ─

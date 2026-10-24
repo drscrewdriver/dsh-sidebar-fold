@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-fold",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Folds the sidebar's add-on panel rows (schedules, agent teams, plugin market, context pages, …) under the shipped \"More\" row: a 28×28 square toggle collapses them to that single header line and expands them back. The fold state persists per window, kept-visible rows are picked from the live sidebar, and the managed rows' icon + label can be aligned left, centre or right.",
   "type": "module",
   "main": "src/index.js",
@@ -13,6 +13,8 @@
     "src/",
     "lib/",
     "locale/",
+    "assets/",
+    "screenshots.json",
     "cordis.patch.yml",
     "dsh.plugin.json",
     "README.md",

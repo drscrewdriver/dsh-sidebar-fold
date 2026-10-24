@@ -23,6 +23,16 @@
 - **静默降级** —— 宿主 DOM 漂移导致锚点找不到时，插件不注入、不改坏侧边栏；控制台会出现
   `dsh-sidebar-fold: fold installed { mounted: false }` 告知未挂载。
 
+## 截图
+
+展开态（各行居中）—— 折叠钮挂在「更多」行，加项行正常列出：
+
+![展开且居中](assets/middle.png)
+
+折叠态 —— 只剩「插件」行与「更多」行：
+
+![折叠](assets/fold.png)
+
 ## 安装
 
 ```sh
@@ -32,7 +42,7 @@ dsh plugin --profile <profile> add dsh-sidebar-fold
 # 本地构建
 npm run build && npm run verify
 npm pack --pack-destination .
-dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.1.tgz
+dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.2.tgz
 ```
 
 装完把 `dsh-sidebar-fold` 补进 profile 的 `dsh.profile.bundles`（或在应用内启用该
