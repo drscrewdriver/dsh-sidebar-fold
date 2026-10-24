@@ -32,7 +32,7 @@ dsh plugin --profile <profile> add dsh-sidebar-fold
 # 本地构建
 npm run build && npm run verify
 npm pack --pack-destination .
-dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.0.tgz
+dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.1.tgz
 ```
 
 装完把 `dsh-sidebar-fold` 补进 profile 的 `dsh.profile.bundles`（或在应用内启用该
@@ -67,11 +67,25 @@ npm run hosts:check  # 与 scripts/hosts.mjs 的枚举漂移检查（--write 修
 
 ## 支持宿主
 
-逐 rc 精确枚举（禁用宽区间），唯一事实源 `scripts/hosts.mjs`：
-`0.1.0-rc.8 || 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.3 || 0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.3`。
+**仅 DSH 0.2.1-rc.3。** 唯一事实源 `scripts/hosts.mjs`（三处声明 —— `engines.dsh`、
+`peerDependencies`、`dsh.plugin.json` —— 都由它生成，禁止手改）。
 
-DOM 锚点只在 **0.2.1-rc.3** 上实测过（host-farm 格 + 真实浏览器取证）。其余线属于声明面，
-须逐格跑自己的浏览器冒烟；不过就从表里删掉，不能让 semver 巧合放行未测宿主。
+为什么不放宽：挂载同时需要侧边栏的**面板列表**与宿主**「更多」行**。逐版本实测
+所有已发布的 `dsh-client-ui-sidebar` rc：
+
+| 宿主线 | 面板列表 | 「更多」行 |
+|---|---|---|
+| 0.1.0-rc.8 / 0.1.1-rc.2 / 0.1.2-rc.1 | 无 | 无 |
+| 0.1.5-rc.3 / 0.1.7-rc.2 / 0.2.0-rc.2 | 有 | 无 |
+| 0.2.1-rc.1 / 0.2.1-rc.2 | 有 | 无 |
+| **0.2.1-rc.3** | 有 | **有** |
+
+没有「更多」行的宿主上，插件按设计静默降级——不注入、不改坏侧边栏；声明这类宿主
+只会让用户装上一个什么都不做的插件。
+
+宿主换代后先跑浏览器冒烟再扩表：CSS-module hash 每次构建都漂移（rc.2 是
+`wtg9ga_`，rc.3 是 `hHd-Xa_`），只有片段选择器（`_panelList`、`_panelRow`、
+`_moreAnchor`、`_collapsed`）是稳的。
 
 ## 升级护栏
 

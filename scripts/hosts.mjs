@@ -1,27 +1,40 @@
 /**
  * hosts.mjs —— 宿主版本枚举的**唯一事实源**。
  *
- * 枚举口径（本仓 2026-10-24 定）：**起步只声明已实测宿主**。本插件的行为依赖宿主
- * 侧边栏的 CSS-module 片段锚（`_panelList` / `_panelRow` / `_moreAnchor`）与
- * 「更多」行的硬编码存在性，这两点只在 0.2.1-rc.3 的**真实浏览器 DOM** 上核过
- * （host-farm 格 + `_artifacts/dsh3093-*.png`）。因此枚举表按「每条线取最大 rc、
- * 逐格实测后删红留绿」推进：新增一格 = 跑一次 farm 浏览器冒烟，未过即从表内删除，
- * 禁止凭 semver 推断放行未测宿主。
+ * 枚举口径（2026-10-24 复核后收紧）：**只声明「更多」行真实存在的宿主**。
+ * 本插件的挂载前提是宿主侧边栏同时具备三组锚点：
+ *   ① `_panelList` / `_panelRow`        面板列表
+ *   ② `_moreAnchor` + `aria-haspopup="menu"`  「更多」行（折叠头）
+ *   ③ `sidebar.panellist.actions`        菜单席位（折叠后菜单仍要能开合）
  *
- * 升级流程：本数组加版本 → `node scripts/sync-hosts.mjs --write` → 矩阵格实测 →
+ * 逐版本取证（unpkg 直读各版本发布的 client 半，脚本 `_scratch/probe-sidebar-versions.mjs`）：
+ *
+ *   0.1.0-rc.8   17K  ①②③ 全无
+ *   0.1.1-rc.2   17K  全无
+ *   0.1.2-rc.1   18K  全无
+ *   0.1.5-rc.3   22K  仅 ①
+ *   0.1.7-rc.2   32K  仅 ①
+ *   0.2.0-rc.2   32K  仅 ①
+ *   0.2.1-rc.1   32K  仅 ①
+ *   0.2.1-rc.2   32K  仅 ①
+ *   0.2.1-rc.3   37K  ①②③ 全有   ← 唯一可声明
+ *
+ * 结论：**「更多」行自 0.2.1-rc.3 起才出现**。0.1.5～0.2.1-rc.2 虽然有面板列表，
+ * 但没有折叠头，插件在这些线上走 `rescan()` 的静默降级（不注入、不改坏侧栏）；
+ * 声明它们只会让用户装上一个不工作的插件，故一律不声明。
+ *
+ * 升级流程：本数组加版本 → `node scripts/sync-hosts.mjs --write` → farm 格浏览器冒烟 →
  * 发版。本数组与由它生成的三处声明（package.json peerDependencies / package.json
  * engines.dsh / dsh.plugin.json engines.dsh）**禁止手改**。
  */
 
+
+
 /** 全部声明支持的宿主 rc（冻结；新增只在此处追加）。 */
 export const supportedHosts = Object.freeze([
-  '0.1.0-rc.8', // 0.1.0 线最大 rc
-  '0.1.1-rc.2', // 0.1.1 线最大 rc
-  '0.1.2-rc.1', // 0.1.2 线最大 rc
-  '0.1.5-rc.3', // 0.1.5 线最大 rc
-  '0.1.7-rc.2', // 0.1.7 线最大 rc
-  '0.2.0-rc.2', // 0.2.0 线最大 rc
-  '0.2.1-rc.3', // 0.2.1 线最大 rc —— 已实测（host-farm 格 + 浏览器 DOM 取证）
+  // 「更多」行首次出现于 0.2.1-rc.3；host-farm 格 + 真实浏览器 DOM 已实测
+  // （三档对齐、折叠翻转、设置卡写入四条通路）。
+  '0.2.1-rc.3',
 ])
 
 /** peerDependencies / engines.dsh 共用的枚举串（精确枚举无暗坑，逐 rc 单列）。 */

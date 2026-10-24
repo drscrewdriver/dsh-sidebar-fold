@@ -41,7 +41,7 @@ dsh plugin --profile <profile> add dsh-sidebar-fold
 # local build
 npm run build && npm run verify
 npm pack --pack-destination .
-dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.0.tgz
+dsh plugin --profile <profile> add ./dsh-sidebar-fold-0.1.1.tgz
 ```
 
 Then add `dsh-sidebar-fold` to the profile's `dsh.profile.bundles` list (or
@@ -79,12 +79,28 @@ npm run hosts:check  # enumeration drift vs scripts/hosts.mjs (--write to repair
 
 ## Supported hosts
 
-Enumerated per rc (never a range), single source of truth `scripts/hosts.mjs`:
-`0.1.0-rc.8 || 0.1.1-rc.2 || 0.1.2-rc.1 || 0.1.5-rc.3 || 0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.3`.
+**DSH 0.2.1-rc.3 only.** Single source of truth: `scripts/hosts.mjs` (the three
+declarations — `engines.dsh`, `peerDependencies`, `dsh.plugin.json` — are generated
+from it and must not be edited by hand).
 
-The DOM anchors were measured on **0.2.1-rc.3** (host-farm cell + real browser). The
-other lines are declaration-level until each passes its own browser smoke; drop a
-line from the table if it fails rather than let semver pass an untested host.
+Why not wider: mounting needs the sidebar's panel list **and** the shipped "More"
+row. Measured on every published `dsh-client-ui-sidebar` rc:
+
+| host line | panel list | "More" row |
+|---|---|---|
+| 0.1.0-rc.8 / 0.1.1-rc.2 / 0.1.2-rc.1 | no | no |
+| 0.1.5-rc.3 / 0.1.7-rc.2 / 0.2.0-rc.2 | yes | no |
+| 0.2.1-rc.1 / 0.2.1-rc.2 | yes | no |
+| **0.2.1-rc.3** | yes | **yes** |
+
+On a line without the More row the plugin degrades quietly — it injects nothing and
+leaves the sidebar as shipped. Declaring such a host would only install a plugin
+that does nothing.
+
+After a host upgrade, re-run the browser smoke test before widening this list:
+CSS-module hashes drift every build (rc.2 emitted `wtg9ga_`, rc.3 emits `hHd-Xa_`),
+so only the fragment selectors (`_panelList`, `_panelRow`, `_moreAnchor`,
+`_collapsed`) are stable.
 
 ## Upgrade guardrail
 
