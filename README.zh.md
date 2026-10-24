@@ -1,5 +1,8 @@
 # dsh-sidebar-fold
 
+[![npm version](https://img.shields.io/npm/v/dsh-sidebar-fold?color=4d6bfe)](https://www.npmjs.com/package/dsh-sidebar-fold)
+[![license](https://img.shields.io/npm/l/dsh-sidebar-fold)](https://github.com/drscrewdriver/dsh-sidebar-fold/blob/main/LICENSE)
+
 把 DSH 左侧栏的「加项入口」收进宿主的 **「更多」行**。
 
 左侧栏的「全局面板」列表会随安装变长：自动化任务、agent 团队、插件市场、上下文页……

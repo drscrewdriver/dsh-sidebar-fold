@@ -1,5 +1,8 @@
 # dsh-sidebar-fold
 
+[![npm version](https://img.shields.io/npm/v/dsh-sidebar-fold?color=4d6bfe)](https://www.npmjs.com/package/dsh-sidebar-fold)
+[![license](https://img.shields.io/npm/l/dsh-sidebar-fold)](https://github.com/drscrewdriver/dsh-sidebar-fold/blob/main/LICENSE)
+
 Collapse the DSH sidebar's add-on entries into the shipped **“More”** row.
 
 The left column's *Global panels* list grows with every installed plugin: schedules,
