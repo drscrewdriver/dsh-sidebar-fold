@@ -1,0 +1,78 @@
+{
+  "name": "dsh-sidebar-fold",
+  "version": "0.1.1",
+  "description": "Folds the sidebar's add-on panel rows (schedules, agent teams, plugin market, context pages, …) under the shipped \"More\" row: a 28×28 square toggle collapses them to that single header line and expands them back. The fold state persists per window, kept-visible rows are picked from the live sidebar, and the managed rows' icon + label can be aligned left, centre or right.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/",
+    "lib/",
+    "locale/",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  },
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --no-warnings --test tests/fold.test.ts tests/fold-plan.test.ts",
+    "test:coverage": "node --experimental-strip-types --no-warnings --experimental-test-coverage --test tests/fold.test.ts tests/fold-plan.test.ts",
+    "build": "node scripts/build-client.mjs",
+    "verify": "node scripts/verify.mjs",
+    "gen:locale": "node scripts/gen-locale-meta.mjs",
+    "ci": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify",
+    "prepack": "npm run lint && npm run build && npm run verify",
+    "prepublishOnly": "npm run lint && npm run build && npm run verify",
+    "hosts:check": "node scripts/sync-hosts.mjs",
+    "hosts:write": "node scripts/sync-hosts.mjs --write"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "sidebar",
+    "collapse",
+    "ui",
+    "align"
+  ],
+  "engines": {
+    "node": ">=22.6.0",
+    "dsh": "0.2.1-rc.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drscrewdriver/dsh-sidebar-fold.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "tag": "latest"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.4"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
