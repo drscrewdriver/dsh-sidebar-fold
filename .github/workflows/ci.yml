@@ -1,0 +1,57 @@
+name: CI
+
+# Each step exists because a shipped defect slipped through the one before it:
+#   lint       a hand-written sheet lost its semicolons, dead copy, key drift
+#   typecheck  a dictionary iterated by text key instead of language
+#   test       "arrow flips but nothing collapses" (empty fold group)
+#   build      source edited, lib/ never rebuilt (stale-build)
+#   verify     loader id != package name, dual manifests on different versions
+#   pack       the tarball did not match the repo artifact byte for byte
+#
+# No secrets are used: every gate runs on the standard library.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: install
+        run: npm ci
+      - name: lint
+        run: npm run lint
+      - name: typecheck
+        run: npm run typecheck
+      - name: test
+        run: npm test
+      - name: test (coverage)
+        run: npm run test:coverage
+      - name: build
+        run: npm run build
+      - name: verify
+        run: npm run verify
+      - name: pack the tarball and compare it with the repo artifact
+        run: |
+          npm pack --pack-destination . >/dev/null
+          tgz=$(ls dsh-sidebar-fold-*.tgz)
+          mkdir -p /tmp/pkg
+          tar -xzf "$tgz" -C /tmp/pkg
+          # V6a: the shipped lib must be the one this commit built
+          cmp /tmp/pkg/package/lib/client.js lib/client.js
+          # the loader id is the package name, or the browser half stays dead
+          grep -q 'id: "dsh-sidebar-fold"' lib/client.js
+          # the two manifests must agree on the version
+          node -e "const a=require('/tmp/pkg/package/package.json'), b=require('/tmp/pkg/package/dsh.plugin.json'); if (a.version !== b.version) { console.error('version drift', a.version, b.version); process.exit(1) }"
+      - name: host declaration must stay a single verified rc
+        run: node -e "const p=require('./package.json'); const n=p.engines.dsh.split('||').length; if (n !== 1) { console.error('engines.dsh declares', n, 'hosts; only verified rcs may be listed'); process.exit(1) }"
