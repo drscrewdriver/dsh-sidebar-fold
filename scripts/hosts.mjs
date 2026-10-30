@@ -37,14 +37,14 @@ export const supportedHosts = Object.freeze([
   // （三档对齐、折叠翻转、设置卡写入四条通路）。
   '0.2.1-rc.3',
   // rc.4（2026-10-28 入列）：契约面与 rc.3 零 diff，「更多」行同在；DOM 锚点未单独复测，不入 domVerifiedHosts
-  '0.2.1-rc.4',
+  '0.2.1-rc.4', '0.2.1-rc.5',
 ])
 
 /** peerDependencies / engines.dsh 共用的枚举串（精确枚举无暗坑，逐 rc 单列）。 */
 export const peerRange = supportedHosts.join(' || ')
 
 /** 本地开发与矩阵默认宿主（devDependencies 若引入宿主包一律钉这里）。 */
-export const developmentHost = '0.2.1-rc.4'
+export const developmentHost = '0.2.1-rc.5'
 
 /** 实测过 DOM 锚点的宿主（其余线在浏览器冒烟前只是声明面候选）。 */
 export const domVerifiedHosts = Object.freeze(['0.2.1-rc.3'])

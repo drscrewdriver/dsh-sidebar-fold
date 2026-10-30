@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-fold",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Folds the sidebar's add-on panel rows (schedules, agent teams, plugin market, context pages, …) under the shipped \"More\" row: a 28×28 square toggle collapses them to that single header line and expands them back. The fold state persists per window, kept-visible rows are picked from the live sidebar, and the managed rows' icon + label can be aligned left, centre or right.",
   "type": "module",
   "main": "src/index.js",
@@ -56,7 +56,7 @@
   ],
   "engines": {
     "node": ">=22.6.0",
-    "dsh": "0.2.1-rc.3 || 0.2.1-rc.4"
+    "dsh": "0.2.1-rc.3 || 0.2.1-rc.4 || 0.2.1-rc.5"
   },
   "license": "MIT",
   "repository": {
@@ -72,7 +72,7 @@
     "@deepseek-ai/schemastery": "^3.18.4"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.3 || 0.2.1-rc.4"
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.3 || 0.2.1-rc.4 || 0.2.1-rc.5"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
