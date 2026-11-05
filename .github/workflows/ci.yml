@@ -60,4 +60,5 @@ jobs:
       # 参考演进：本仓 2026-10-28/30 把 rc.4、rc.5 依同串纪律追加到 supportedHosts，
       # 原「只能一个 rc」的写法会拒绝合法的枚举增长。
       - name: engines.dsh must stay a strict enumeration (no wide-range notation)
-        run: node -e "const v=require('./package.json').engines.dsh; for (const bad of ['>=','<=','^','-0','.x',' - ']) { if (v.includes(bad)) { console.error('wide-range notation', bad, 'in', v); process.exit(1) } } if (!/^\d\.\d+\.\d+(?:-rc\.\d+)?(?: \|\| \d\.\d+\.\d+(?:-rc\.\d+)?)*$/.test(v)) { console.error('engines.dsh not strict rc enumeration:', v); process.exit(1) }"
+        run: |
+          node -e "const v=require('./package.json').engines.dsh; for (const bad of ['>=','<=','^','-0','.x',' - ']) { if (v.includes(bad)) { console.error('wide-range notation', bad, 'in', v); process.exit(1) } } if (!/^\d\.\d+\.\d+(?:-rc\.\d+)?(?: \|\| \d\.\d+\.\d+(?:-rc\.\d+)?)*$/.test(v)) { console.error('engines.dsh not strict rc enumeration: ' + v); process.exit(1) }"
