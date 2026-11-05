@@ -53,5 +53,11 @@ jobs:
           grep -q 'id: "dsh-sidebar-fold"' lib/client.js
           # the two manifests must agree on the version
           node -e "const a=require('/tmp/pkg/package/package.json'), b=require('/tmp/pkg/package/dsh.plugin.json'); if (a.version !== b.version) { console.error('version drift', a.version, b.version); process.exit(1) }"
-      - name: host declaration must stay a single verified rc
-        run: node -e "const p=require('./package.json'); const n=p.engines.dsh.split('||').length; if (n !== 1) { console.error('engines.dsh declares', n, 'hosts; only verified rcs may be listed'); process.exit(1) }"
+      # engines.dsh 是「单源」而非「单宿主」：真正的对齐纪律由 scripts/verify.mjs
+      # 在 npm run verify 里执行（engines.dsh 必须逐字符等于 scripts/hosts.mjs 导出的
+      # peerRange，peerDependencies 集合与 key 也不能漂移）。这里只保留一条最粗的
+      # 反宽区间守卫，与 verify 步骤互补，不再对 hosts 数量做假设。
+      # 参考演进：本仓 2026-10-28/30 把 rc.4、rc.5 依同串纪律追加到 supportedHosts，
+      # 原「只能一个 rc」的写法会拒绝合法的枚举增长。
+      - name: engines.dsh must stay a strict enumeration (no wide-range notation)
+        run: node -e "const v=require('./package.json').engines.dsh; for (const bad of ['>=','<=','^','-0','.x',' - ']) { if (v.includes(bad)) { console.error('wide-range notation', bad, 'in', v); process.exit(1) } } if (!/^\d\.\d+\.\d+(?:-rc\.\d+)?(?: \|\| \d\.\d+\.\d+(?:-rc\.\d+)?)*$/.test(v)) { console.error('engines.dsh not strict rc enumeration:', v); process.exit(1) }"
