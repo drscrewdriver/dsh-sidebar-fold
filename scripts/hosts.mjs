@@ -38,6 +38,7 @@ export const supportedHosts = Object.freeze([
   '0.2.1-rc.3',
   // rc.4（2026-10-28 入列）：契约面与 rc.3 零 diff，「更多」行同在；DOM 锚点未单独复测，不入 domVerifiedHosts
   '0.2.1-rc.4', '0.2.1-rc.5',
+  '0.2.2-rc.1',
 ])
 
 /** peerDependencies / engines.dsh 共用的枚举串（精确枚举无暗坑，逐 rc 单列）。 */
