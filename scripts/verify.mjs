@@ -11,7 +11,7 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { hostPeerPackages, peerRange, supportedHosts } from './hosts.mjs'
+import { enginesRange, hostPeerPackages, peerRange, supportedHosts } from './hosts.mjs'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const fail = []
@@ -37,12 +37,12 @@ if (pkg.name !== 'dsh-sidebar-fold') fail.push(`package.json name 异常: ${pkg.
 if (manifest.id !== `dsh-external/${pkg.name}`) fail.push(`dsh.plugin.json id 应为 dsh-external/${pkg.name}，实为 ${manifest.id}`)
 if (pkg.version !== manifest.version) fail.push(`版本号不同号: ${pkg.version} ≠ ${manifest.version}`)
 
-// --- dual manifest enumeration ---------------------------------------------
+// --- dual manifest declarations (engines=range / peers=enumeration) ----------
 for (const [label, value] of [
   ['package.json engines.dsh', pkg?.engines?.dsh],
   ['dsh.plugin.json engines.dsh', manifest?.engines?.dsh],
 ]) {
-  if (value !== peerRange) fail.push(`${label} 与 hosts.mjs 枚举串不一致`)
+  if (value !== enginesRange) fail.push(`${label} 与 hosts.mjs 的 enginesRange 不一致（应为 ${enginesRange}）`)
 }
 for (const name of hostPeerPackages) {
   if (pkg?.peerDependencies?.[name] !== peerRange) fail.push(`peerDependencies[${name}] 未同串`)
@@ -50,10 +50,18 @@ for (const name of hostPeerPackages) {
 const peerKeys = Object.keys(pkg?.peerDependencies ?? {}).sort().join(',')
 const expectedKeys = [...hostPeerPackages].sort().join(',')
 if (peerKeys !== expectedKeys) fail.push(`peerDependencies 集合漂移: ${peerKeys || '(空)'} ≠ ${expectedKeys}`)
-for (const value of [pkg?.engines?.dsh, manifest?.engines?.dsh]) {
-  for (const forbidden of ['>=', '<=', '^', '-0', '.x']) {
-    if (typeof value === 'string' && value.includes(forbidden)) fail.push(`engines.dsh 含宽区间记法 '${forbidden}'`)
+// 形状隔离：engines 必须是有界区间（上界 <0.3.0），peer 必须是逐 rc 枚举。
+for (const [label, value] of [
+  ['package.json engines.dsh', pkg?.engines?.dsh],
+  ['dsh.plugin.json engines.dsh', manifest?.engines?.dsh],
+]) {
+  if (typeof value === 'string' && (!value.startsWith('>=') || !value.includes('<0.3.0'))) {
+    fail.push(`${label} 应为 '>=<下限> <0.3.0' 区间记法，实为 ${JSON.stringify(value)}`)
   }
+}
+for (const name of hostPeerPackages) {
+  const value = pkg?.peerDependencies?.[name]
+  if (typeof value === 'string' && value.includes('>=')) fail.push(`peerDependencies[${name}] 必须保持逐 rc 枚举，不得改宽区间`)
 }
 
 // --- dsh declarations -------------------------------------------------------

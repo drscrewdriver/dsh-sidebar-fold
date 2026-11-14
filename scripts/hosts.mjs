@@ -27,6 +27,13 @@
  * 升级流程：本数组加版本 → `node scripts/sync-hosts.mjs --write` → farm 格浏览器冒烟 →
  * 发版。本数组与由它生成的三处声明（package.json peerDependencies / package.json
  * engines.dsh / dsh.plugin.json engines.dsh）**禁止手改**。
+ *
+ * 声明形状（2026-11-14 版本上下限改造，用户裁定，与 dsh-date-wrapper /
+ * dsh-cookie-cleaner 批次同口径）：
+ *   - engines.dsh 发 {@link enginesRange} 有界区间：下限＝本枚举起点（不硬编码，
+ *     防「下限写贵了静默丢老线」——dsh-arrowkey-nav 的事故形态），上限 `<0.3.0`；
+ *   - peerDependencies 保持**逐 rc 枚举**（{@link peerRange}）：npm/pnpm 解析默认
+ *     不带 includePrerelease，区间会放过判定面而漏掉中间 rc，导致 ERESOLVE。
  */
 
 
@@ -41,8 +48,15 @@ export const supportedHosts = Object.freeze([
   '0.2.2-rc.1',
 ])
 
-/** peerDependencies / engines.dsh 共用的枚举串（精确枚举无暗坑，逐 rc 单列）。 */
+/** peerDependencies 共用的枚举串（精确枚举无暗坑，逐 rc 单列）。 */
 export const peerRange = supportedHosts.join(' || ')
+
+/**
+ * engines.dsh 的有界区间（2026-11-14 版本上下限改造）：下限由 {@link supportedHosts}
+ * 起点推导（0.2.1-rc.3 —「更多」行首次出现的宿主），上限 `<0.3.0`，即 0.2.x 全窗口
+ * 内的新 rc 不必发版即被接纳。宿主侧判定带 `includePrerelease: true`，区间口径安全。
+ */
+export const enginesRange = `>=${supportedHosts[0]} <0.3.0`
 
 /** 本地开发与矩阵默认宿主（devDependencies 若引入宿主包一律钉这里）。 */
 export const developmentHost = '0.2.1-rc.5'

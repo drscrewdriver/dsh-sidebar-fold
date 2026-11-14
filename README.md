@@ -89,11 +89,9 @@ npm run hosts:check  # enumeration drift vs scripts/hosts.mjs (--write to repair
 
 ## Supported hosts
 
-**DSH 0.2.1-rc.3 only.** Single source of truth: `scripts/hosts.mjs` (the three
-declarations — `engines.dsh`, `peerDependencies`, `dsh.plugin.json` — are generated
-from it and must not be edited by hand).
+**DSH hosts `>=0.2.1-rc.3 <0.3.0`** (the "More" row first ships in 0.2.1-rc.3; newer 0.2.x rcs stay installable without a republish). Single source of truth: `scripts/hosts.mjs` — `engines.dsh` carries that bounded range, `peerDependencies` keep the per-rc enumeration (npm resolution never assumes `includePrerelease`), and `dsh.plugin.json` mirrors the range; all generated, never hand-edited.
 
-Why not wider: mounting needs the sidebar's panel list **and** the shipped "More"
+Why the floor is 0.2.1-rc.3: mounting needs the sidebar's panel list **and** the shipped "More"
 row. Measured on every published `dsh-client-ui-sidebar` rc:
 
 | host line | panel list | "More" row |

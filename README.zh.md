@@ -77,10 +77,9 @@ npm run hosts:check  # 与 scripts/hosts.mjs 的枚举漂移检查（--write 修
 
 ## 支持宿主
 
-**仅 DSH 0.2.1-rc.3。** 唯一事实源 `scripts/hosts.mjs`（三处声明 —— `engines.dsh`、
-`peerDependencies`、`dsh.plugin.json` —— 都由它生成，禁止手改）。
+**支持 DSH 宿主 `>=0.2.1-rc.3 <0.3.0`**（「更多」行自 0.2.1-rc.3 才出现；0.2.x 线上后续 rc 无需重发版即可安装）。唯一事实源 `scripts/hosts.mjs`：`engines.dsh` 发该有界区间，`peerDependencies` 保持逐 rc 枚举（npm 解析不默认带 `includePrerelease`），`dsh.plugin.json` 镜像区间——全部由它生成，禁止手改。
 
-为什么不放宽：挂载同时需要侧边栏的**面板列表**与宿主**「更多」行**。逐版本实测
+为什么下限是 0.2.1-rc.3：挂载同时需要侧边栏的**面板列表**与宿主**「更多」行**。逐版本实测
 所有已发布的 `dsh-client-ui-sidebar` rc：
 
 | 宿主线 | 面板列表 | 「更多」行 |
