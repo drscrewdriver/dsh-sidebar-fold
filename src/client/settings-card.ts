@@ -20,7 +20,18 @@
  */
 import { ATTR, CLS, type AlignMode } from './constants.ts'
 import { pickDictionary } from './locales.ts'
-import { deriveKeep, normalizeAlign, roster, subscribeRoster } from './fold.ts'
+import {
+  applyConfig,
+  canMoveToMore,
+  deriveLists,
+  effectiveConfig,
+  hostHasPin,
+  isFixedLabel,
+  normalizeAlign,
+  roster,
+  subscribeRoster,
+  type RowState,
+} from './fold.ts'
 
 /** The module-loader factory's `require`, injected by the host's module table. */
 declare const require: (id: string) => any
@@ -29,7 +40,7 @@ const react: any = require('react')
 /** One settings snapshot as the host's scoped form reports it. */
 export interface ConfigSnapshot {
   status: 'loading' | 'ready' | 'unavailable'
-  value: { defaultFolded?: boolean; keepLabels?: string[]; align?: string } | undefined
+  value: { defaultFolded?: boolean; keepLabels?: string[]; hideLabels?: string[]; align?: string } | undefined
   revision: number | undefined
   writable: boolean
 }
@@ -45,9 +56,10 @@ export interface SettingsScopeLike {
 const scopeRef: { scope: SettingsScopeLike | undefined } = { scope: undefined }
 
 /** Fallback shown when no host form is served (≤0.1.6, or an unserved namespace). */
-let fallback: { defaultFolded: boolean; keepLabels: string[]; align: AlignMode } = {
+let fallback: { defaultFolded: boolean; keepLabels: string[]; hideLabels: string[]; align: AlignMode } = {
   defaultFolded: false,
   keepLabels: ['插件', 'Plugins'],
+  hideLabels: [],
   align: 'start',
 }
 
@@ -68,6 +80,7 @@ function ensureCardRoot(): HTMLElement {
 function currentValues(): {
   defaultFolded: boolean
   keepLabels: string[]
+  hideLabels: string[]
   align: AlignMode
   writable: boolean
   status: ConfigSnapshot['status']
@@ -78,6 +91,7 @@ function currentValues(): {
     return {
       defaultFolded: snap.value?.defaultFolded ?? fallback.defaultFolded,
       keepLabels: snap.value?.keepLabels ?? fallback.keepLabels,
+      hideLabels: snap.value?.hideLabels ?? fallback.hideLabels,
       align: normalizeAlign(snap.value?.align ?? fallback.align),
       writable: snap.writable && snap.status === 'ready',
       status: snap.status,
@@ -86,6 +100,7 @@ function currentValues(): {
   return {
     defaultFolded: fallback.defaultFolded,
     keepLabels: fallback.keepLabels,
+    hideLabels: fallback.hideLabels,
     align: normalizeAlign(fallback.align),
     writable: false,
     status: 'unavailable',
@@ -142,11 +157,56 @@ function switchControl(
   return button
 }
 
-/** Write one field through the host's scoped form (the host owns conflicts). */
-function write(field: string, value: unknown): void {
+/** What the last write did, so the card can say it instead of failing silently. */
+let saveState: { status: 'idle' | 'saving' | 'saved' | 'error'; fields: Record<string, unknown> } = {
+  status: 'idle',
+  fields: {},
+}
+/** How long a host write may stay unconfirmed before the card reads the store. */
+const SAVE_CONFIRM_MS = 1200
+
+/** Deep-equality over JSON values — enough for the strings and string arrays here. */
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+/**
+ * Write fields through the host's scoped form and report the outcome.
+ *
+ * Two lies this replaces: the first build dropped `set()`'s promise entirely, and
+ * the second believed it. On the 0.2.2 line the write is persisted but the
+ * promise **never settles** (measured: still pending after 6s), so the confirm is
+ * bounded by {@link SAVE_CONFIRM_MS} and then settled against the served
+ * snapshot — the host's own store is the only thing that can say “stored”.
+ */
+function commit(fields: Record<string, unknown>): void {
   const scope = scopeRef.scope
   if (scope === undefined) return
-  void scope.set(field, value)
+  saveState = { status: 'saving', fields }
+  paint()
+  const writes = Object.entries(fields).map(([field, value]) =>
+    Promise.resolve(scope.set(field, value)).then((ok) => ok === true).catch(() => false),
+  )
+  const confirmed = new Promise<boolean>((resolve) => {
+    setTimeout(() => {
+      let value: Record<string, unknown> | undefined
+      try {
+        value = scope.getSnapshot().value as Record<string, unknown> | undefined
+      } catch {
+        value = undefined
+      }
+      resolve(Object.entries(fields).every(([field, expected]) => sameValue(value?.[field], expected)))
+    }, SAVE_CONFIRM_MS)
+  })
+  void Promise.race([Promise.all(writes).then((results) => results.every(Boolean)), confirmed]).then((ok) => {
+    saveState = { status: ok ? 'saved' : 'error', fields }
+    paint()
+  })
+}
+
+/** Write one field (the single-value controls go through here). */
+function write(field: string, value: unknown): void {
+  commit({ [field]: value })
 }
 
 /**
@@ -160,7 +220,7 @@ function write(field: string, value: unknown): void {
 function segmentedControl(
   field: string,
   value: string,
-  options: readonly { value: string; label: string }[],
+  options: readonly { value: string; label: string; unavailable?: boolean }[],
   disabled: boolean,
   onChange: (next: string) => void,
 ): HTMLElement {
@@ -176,7 +236,9 @@ function segmentedControl(
     button.setAttribute('aria-checked', String(option.value === value))
     button.dataset.option = option.value
     button.textContent = option.label
-    button.disabled = disabled
+    // One option can be absent from this host (a 0.2.1 sidebar has no pin
+    // control); disabling just that segment keeps the other two usable.
+    button.disabled = disabled || option.unavailable === true
     button.addEventListener('click', () => {
       if (button.disabled) return
       // Move the mark locally so the click feels immediate; the host echoes a
@@ -192,14 +254,21 @@ function segmentedControl(
 }
 
 /**
- * Persist the keep list produced by the per-row switches.
+ * Persist one row's moved control.
  *
- * The stored list is exactly "labels currently switched on" — the switch state is
- * the source of truth, so a row that disappears from the sidebar drops out and a
- * row that appears starts folded.
+ * Two lists, one source of truth: `always` rows are written to `keepLabels` and
+ * `more` rows to `hideLabels`, so the control state never has to be inferred
+ * from a stale list.
+ *
+ * The write is also adopted **locally**: the host persists the value but does not
+ * echo a new snapshot within seconds (measured on 0.2.2-rc.3 while moving a row
+ * into “More”), and a control whose click visibly does nothing reads as broken.
  */
-function writeKeep(nextLabels: readonly string[]): void {
-  write('keepLabels', [...nextLabels])
+function writeRowState(rows: ReturnType<typeof roster>, label: string, next: RowState): void {
+  const lists = deriveLists(rows, label, next)
+  applyConfig({ ...effectiveConfig(), keepLabels: lists.keepLabels, hideLabels: lists.hideLabels })
+  paint()
+  commit({ keepLabels: lists.keepLabels, hideLabels: lists.hideLabels })
 }
 
 /** Paint (or repaint) the card body from the current values and the live roster. */
@@ -242,38 +311,81 @@ function paint(): void {
     ),
   )
 
-  // ③ fold scope: one switch per row that exists in this profile right now
+  // ③ fold scope: one three-state control per row that exists in this profile
   const scopeTitle = document.createElement('div')
   scopeTitle.className = CLS.label
   scopeTitle.setAttribute(ATTR.own, '')
-  scopeTitle.textContent = dict['settings.keep']
+  scopeTitle.textContent = dict['settings.rows']
   cardRoot.appendChild(scopeTitle)
 
   const hint = document.createElement('span')
   hint.className = CLS.hint
   hint.setAttribute(ATTR.own, '')
-  hint.textContent = dict['settings.keepHint']
+  hint.textContent = dict['settings.rowsHint']
   cardRoot.appendChild(hint)
 
   if (rows.length === 0) {
     const empty = document.createElement('span')
     empty.className = CLS.hint
     empty.setAttribute(ATTR.own, '')
-    empty.textContent = dict['settings.keepEmpty']
+    empty.textContent = dict['settings.rowsEmpty']
     cardRoot.appendChild(empty)
   }
 
+  // Two gates on the third state, per row: this host must ship the pin mechanism
+  // at all (0.2.2 on), and the row must not be the host's fixed panel — the host
+  // never unpins that one, so offering it would be a promise it silently refuses.
+  const canHide = hostHasPin()
   for (const entry of rows) {
+    const movable = canMoveToMore(entry.label, canHide)
+    const hintText = movable
+      ? dict['settings.rowHint']
+      : isFixedLabel(entry.label) ? dict['settings.moreFixed'] : dict['settings.moreUnavailable']
     cardRoot.appendChild(
       buildRow(
         entry.label,
-        dict['settings.keepRowHint'],
-        switchControl(`keep:${entry.label}`, entry.keep, !values.writable, (next) => {
-          // The switch state IS the stored list: switched-on rows are the kept ones.
-          writeKeep(deriveKeep(rows, entry.label, next))
-        }),
+        hintText,
+        segmentedControl(
+          `row:${entry.label}`,
+          entry.state,
+          [
+            { value: 'always', label: dict['settings.rowAlways'] },
+            { value: 'foldable', label: dict['settings.rowFold'] },
+            { value: 'more', label: dict['settings.rowMore'], unavailable: !movable },
+          ],
+          !values.writable,
+          (next) => {
+            writeRowState(rows, entry.label, next as RowState)
+          },
+        ),
       ),
     )
+  }
+
+  // ④ write outcome. The host owns persistence; a refused write leaves the card
+  // and the sidebar agreeing with each other and disagreeing with the store, so
+  // the state has to be on screen, with the retry next to it.
+  if (saveState.status !== 'idle') {
+    const status = document.createElement('span')
+    status.className = CLS.hint
+    status.setAttribute(ATTR.own, '')
+    status.dataset.saveState = saveState.status
+    status.textContent = saveState.status === 'saving'
+      ? dict['settings.saving']
+      : saveState.status === 'saved' ? dict['settings.saved'] : dict['settings.saveFailed']
+    cardRoot.appendChild(status)
+  }
+  if (saveState.status === 'error') {
+    const retry = document.createElement('button')
+    retry.type = 'button'
+    retry.className = CLS.control
+    retry.dataset.field = 'retry'
+    retry.setAttribute(ATTR.own, '')
+    retry.textContent = dict['settings.retrySave']
+    retry.addEventListener('click', () => {
+      commit(saveState.fields)
+    })
+    cardRoot.appendChild(retry)
   }
 
   if (!values.writable) {
@@ -299,7 +411,12 @@ export function onScope(scope: SettingsScopeLike): void {
 
 /** Adopt the built-in fallback (used when no writable surface exists). */
 export function onFallback(next: typeof fallback): void {
-  fallback = { defaultFolded: next.defaultFolded, keepLabels: [...next.keepLabels], align: normalizeAlign(next.align) }
+  fallback = {
+    defaultFolded: next.defaultFolded,
+    keepLabels: [...next.keepLabels],
+    hideLabels: [...next.hideLabels],
+    align: normalizeAlign(next.align),
+  }
   paint()
 }
 
@@ -331,4 +448,4 @@ export function createConfigCard(): () => unknown {
 }
 
 /** Exported for the guard test: the card writes no free-text label list. */
-export const CARD_WRITES: readonly string[] = ['defaultFolded', 'align', 'keepLabels']
+export const CARD_WRITES: readonly string[] = ['defaultFolded', 'align', 'keepLabels', 'hideLabels']

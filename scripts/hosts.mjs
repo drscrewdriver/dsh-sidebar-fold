@@ -46,6 +46,9 @@ export const supportedHosts = Object.freeze([
   // rc.4（2026-10-28 入列）：契约面与 rc.3 零 diff，「更多」行同在；DOM 锚点未单独复测，不入 domVerifiedHosts
   '0.2.1-rc.4', '0.2.1-rc.5',
   '0.2.2-rc.1',
+  // 0.2.2 线：行被 `div._panelEntry` 包裹并自带避让宿主图钉控件，「隐藏到更多」
+  // 就是宿主的取消固定（2026-11-14 读包内 src 取证，DOM 冒烟见 README 的宿主矩阵）。
+  '0.2.2-rc.2', '0.2.2-rc.3',
 ])
 
 /** peerDependencies 共用的枚举串（精确枚举无暗坑，逐 rc 单列）。 */
@@ -62,7 +65,12 @@ export const enginesRange = `>=${supportedHosts[0]} <0.3.0`
 export const developmentHost = '0.2.1-rc.5'
 
 /** 实测过 DOM 锚点的宿主（其余线在浏览器冒烟前只是声明面候选）。 */
-export const domVerifiedHosts = Object.freeze(['0.2.1-rc.3'])
+export const domVerifiedHosts = Object.freeze([
+  '0.2.1-rc.3',
+  // 2026-11-14 farm 格实测：toggle 挂载 / 折叠标记落在 `_panelEntry` 上 / 三档写入 /
+  // “隐藏到更多→取消固定”与“拉回→菜单固定”双向都通（截图+DOM 取证）。
+  '0.2.2-rc.3',
+])
 
 /**
  * peer 闸门指向的宿主子包。本插件的 client 半只经 `dsh.client.inject` 等

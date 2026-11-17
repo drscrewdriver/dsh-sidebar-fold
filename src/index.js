@@ -38,6 +38,15 @@ export const DEFAULT_FOLDED = false
 export const DEFAULT_KEEP_LABELS = ['插件', 'Plugins']
 
 /**
+ * Rows handed to the host's own "More" list (empty by default).
+ *
+ * The third state, from the 0.2.2 sidebar on: an entry can leave the column and
+ * live in the "More" menu. Our half only records the choice — the host owns the
+ * list, and its pin controls are what actually move a row.
+ */
+export const DEFAULT_HIDE_LABELS = []
+
+/**
  * Row-content alignment for the managed area: `start` | `center` | `end`.
  *
  * A plain string, not a closed union: schemastery's union builder is not the same
@@ -75,9 +84,11 @@ function live(schema) {
  */
 export const Config = z.object({
   defaultFolded: live(z.boolean().default(DEFAULT_FOLDED)),
-  // Rows kept visible while folding. Edited through the card's per-row switches,
+  // Rows kept visible while folding. Edited through the card's per-row controls,
   // which enumerate the live sidebar rather than asking the user to type labels.
   keepLabels: live(z.array(z.string()).default(DEFAULT_KEEP_LABELS)),
+  // Rows the host owns in its "More" list (the card's third state).
+  hideLabels: live(z.array(z.string()).default(DEFAULT_HIDE_LABELS)),
   // Icon + label alignment inside each managed row (`start` | `center` | `end`).
   align: live(z.string().default(DEFAULT_ALIGN)),
 })

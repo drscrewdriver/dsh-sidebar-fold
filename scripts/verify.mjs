@@ -94,7 +94,7 @@ if (clientBundle) {
   if (clientBundle.includes('dsh-client-ui-primitives')) fail.push('bundle 引用了宿主 primitives（vendor 禁面）')
   // The bundle is the shipped artifact: prove the fold actually reads the anchors
   // we measured, so a stale build can never ship silently.
-  for (const marker of ['_panelList', '_panelRow', '_moreAnchor', '_collapsed']) {
+  for (const marker of ['_panelList', '_panelRow', '_moreAnchor', '_collapsed', 'sidebar.panellist.actions']) {
     if (!clientBundle.includes(marker)) fail.push(`bundle 缺少锚点 ${marker}（产物可能过期，重跑 npm run build）`)
   }
 }

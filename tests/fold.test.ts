@@ -7,7 +7,20 @@
  */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { findPanelNav, isKept, normalizeAlign, splitRows, type RowLike } from '../src/client/fold.ts'
+import {
+  canMoveToMore,
+  findPanelNav,
+  foldTarget,
+  isFixedLabel,
+  isHidden,
+  isKept,
+  normalizeAlign,
+  pruneHidden,
+  recordsTouchRows,
+  splitRows,
+  stateOf,
+  type RowLike,
+} from '../src/client/fold.ts'
 
 /** A row stub carrying only what the fold reads. */
 function row(label: string, options: { haspopup?: string; title?: string } = {}): RowLike {
@@ -34,6 +47,64 @@ describe('isKept', () => {
   })
   it('treats an unnamed row as kept (never fold what you cannot name)', () => {
     assert.equal(isKept('', []), true)
+  })
+})
+
+describe('isHidden / stateOf', () => {
+  it('never hides an unnamed row: the pin control is addressed by name', () => {
+    assert.equal(isHidden('', ['插件']), false)
+  })
+
+  it('resolves the three states from the two lists', () => {
+    assert.equal(stateOf('插件', ['插件'], []), 'always')
+    assert.equal(stateOf('自动化任务', ['插件'], []), 'foldable')
+    assert.equal(stateOf('插件市场', ['插件'], ['插件市场']), 'more')
+  })
+
+  it('lets the hide list win when a label sits in both', () => {
+    assert.equal(stateOf('自动化任务', ['自动化任务'], ['自动化任务']), 'more')
+  })
+})
+
+describe('fixed row / third-state capability', () => {
+  it('recognises the host fixed panel in both shipped languages', () => {
+    assert.equal(isFixedLabel('插件'), true)
+    assert.equal(isFixedLabel(' plugins '), true)
+    assert.equal(isFixedLabel('自动化任务'), false)
+    assert.equal(isFixedLabel(''), false)
+  })
+
+  it('offers the third state only where the host can actually move the row', () => {
+    assert.equal(canMoveToMore('自动化任务', true), true)
+    assert.equal(canMoveToMore('自动化任务', false), false)
+    assert.equal(canMoveToMore('插件', true), false)
+  })
+
+  it('drops the fixed row from a stale hide list', () => {
+    assert.deepEqual(pruneHidden(['插件', '自动化任务', 'Plugins']), ['自动化任务'])
+  })
+
+  // The host never unpins its fixed row, so a config that lists it must read back
+  // as “not hidden” instead of leaving the control pointing at a refused move.
+  it('never reports the fixed row as hidden', () => {
+    assert.equal(isHidden('插件', ['插件']), false)
+    assert.equal(stateOf('插件', [], ['插件']), 'foldable')
+  })
+})
+
+describe('recordsTouchRows', () => {
+  const rowNode = { nodeType: 1, matches: (sel: string) => sel.includes('_panelRow'), querySelector: () => null }
+  const wrapper = { nodeType: 1, matches: () => false, querySelector: () => ({}) }
+  const textNode = { nodeType: 3 }
+
+  it('ignores batches that cannot touch the sidebar', () => {
+    assert.equal(recordsTouchRows([{ type: 'childList', addedNodes: [textNode] }]), false)
+    assert.equal(recordsTouchRows([{ type: 'attributes' }]), false)
+  })
+
+  it('notices an added row and a wrapper that holds one', () => {
+    assert.equal(recordsTouchRows([{ type: 'childList', addedNodes: [rowNode] }]), true)
+    assert.equal(recordsTouchRows([{ type: 'childList', removedNodes: [wrapper] }]), true)
   })
 })
 
@@ -73,6 +144,12 @@ describe('splitRows', () => {
     const split = splitRows([plugins, more], ['插件'])
     assert.ok(split !== null)
     assert.deepEqual(split.group, [])
+  })
+
+  it('excludes rows that belong to the host "More" list', () => {
+    const split = splitRows([plugins, schedules, teams, more], ['插件'], ['agent团队'])
+    assert.ok(split !== null)
+    assert.deepEqual(split.group, [schedules])
   })
 })
 
@@ -139,5 +216,42 @@ describe('normalizeAlign', () => {
     assert.equal(normalizeAlign(''), 'start')
     assert.equal(normalizeAlign(undefined), 'start')
     assert.equal(normalizeAlign(42), 'start')
+  })
+})
+
+describe('foldTarget：折叠标记落在谁身上（issue #2）', () => {
+  /**
+   * A row stub that answers `closest('div[class*="_panelEntry"]')` the way the
+   * host does from the 0.2.2 line on: the button's parent is the entry wrapper.
+   * The wrapper is what `.panelList { display:flex; gap:2px }` counts as an item,
+   * so hiding the button alone leaves an empty entry behind — that empty entry
+   * was the reported ~10px gap (5 folded rows × 2px).
+   */
+  function wrappedRow(label: string) {
+    const entry = row('')
+    const button = row(label)
+    // `closest` is typed as returning a real `Element`; the seam only ever calls
+    // `getAttribute`/`setAttribute` on it, so a RowLike stub is the honest double.
+    const stub = button as RowLike
+    stub.closest = ((sel: string) => (sel.includes('_panelEntry') ? entry : null)) as unknown as (
+      selector: string,
+    ) => Element | null
+    return { entry, button: stub }
+  }
+
+  it('marks the panelEntry wrapper when the host ships one', () => {
+    const { entry, button } = wrappedRow('自动化任务')
+    assert.equal(foldTarget(button), entry, '标记必须落在 div._panelEntry 上，而不是里面的 button')
+  })
+
+  it('falls back to the row itself on hosts without the wrapper', () => {
+    const bare = row('自动化任务')
+    assert.equal(foldTarget(bare), bare, '没有 panelEntry 的宿主上必须退回按钮本身')
+  })
+
+  it('survives a stub that has no closest at all', () => {
+    // Older test doubles only implement the attribute faces; the seam must not throw.
+    const bare = row('上下文洞察')
+    assert.equal(foldTarget(bare), bare)
   })
 })

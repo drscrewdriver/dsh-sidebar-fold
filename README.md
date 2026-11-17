@@ -23,9 +23,14 @@ folds those add-on rows away so only the “More” line remains; the arrow flip
   icon + label pair **left / centred / right**. At `right` the toggle mirrors to the
   row's left end so it never covers the text; the override is a single
   `justify-content` longhand and leaves the row's `display`/`gap`/height alone.
-- **Configurable** — default state, the kept-visible rows and the row alignment live
-  in the plugin's settings card (host `Config`, `.volatile()`, applied without a
-  restart).
+- **Three states per row (host 0.2.2 on)** — every row in the settings card picks one of
+  **Show** (always visible), **Fold** (may be folded) or **Hide in More** (hand the row to the
+  host's own “More” list, i.e. its unpin action). A hidden row leaves the column and appears
+  in the “More” menu, from where the host's own pin control brings it back; the plugin
+  reconciles both sides on boot, on a config write and on every sidebar repaint — including
+  after a reload, where the host's in-memory pin table comes back empty.
+- **Configurable** — default state, the three-state row controls and the row alignment live
+  in the plugin's settings card (host `Config`, `.volatile()`, applied without a restart).
 - **Rail-safe** — when the sidebar is collapsed to the 36 px icon rail the toggle is
   removed and every row is shown again: no squeezing, no half-hidden state.
 - **Quiet degradation** — if the host DOM drifts and the anchors are not found, the
@@ -62,17 +67,28 @@ external edits back.
 ## Settings
 
 Open **Plugins → dsh-sidebar-fold** (the card is registered on the
-`plugins.bundle.config` seat, keyed by the package name):
+`plugins.bundle.config` seat, keyed by the package name), or click
+**“Sidebar fold settings” at the bottom of the sidebar's “More” menu**: that row sits in
+the `sidebar.panellist.actions` seat and jumps with the host's own
+`pluginNavigation.openBundle(package)`, so it shares the menu's keyboard walk and dismiss
+path; a host without that service falls back to selecting the Plugins panel.
 
 | Field | Meaning | Default |
 |---|---|---|
 | Folded by default | State a window starts in when it has no local record | off |
 | Row alignment | Three-way segmented control (left / centre / right) for the managed rows; the “More” row follows the same setting | left |
-| Entries kept visible | **One switch per row read from the live sidebar** — switch a row on to keep it visible while the rest fold | only `插件` / `Plugins` |
+| Entries (one per row) | **Show** = always visible; **Fold** = may be folded (default); **Hide in More** = move it into the host's “More” menu | Fold |
 
 The row list is read from the DOM at open time, so a panel installed later shows up
-without editing anything. When every row is switched on the toggle dims itself and
+without editing anything. When every row is set to Show the toggle dims itself and
 reports `aria-disabled="true"` instead of flipping an arrow over an unchanged list.
+
+“Hide in More” needs the 0.2.2 row structure (`div._panelEntry` plus the in-row pin
+control): on the 0.2.1 line that one segment is disabled in the card while the other two
+keep working. The host's pin table is **in memory only** (a reload starts empty), so the
+plugin reconciles on every scan: a row that should be hidden but is still in the column
+gets its unpin control clicked, and a hidden label whose row came back is dropped from
+the hide list.
 
 ## Development
 
@@ -94,29 +110,42 @@ npm run hosts:check  # enumeration drift vs scripts/hosts.mjs (--write to repair
 Why the floor is 0.2.1-rc.3: mounting needs the sidebar's panel list **and** the shipped "More"
 row. Measured on every published `dsh-client-ui-sidebar` rc:
 
-| host line | panel list | "More" row |
-|---|---|---|
-| 0.1.0-rc.8 / 0.1.1-rc.2 / 0.1.2-rc.1 | no | no |
-| 0.1.5-rc.3 / 0.1.7-rc.2 / 0.2.0-rc.2 | yes | no |
-| 0.2.1-rc.1 / 0.2.1-rc.2 | yes | no |
-| **0.2.1-rc.3** | yes | **yes** |
+| host line | panel list | "More" row | row wrapper / in-row pin control |
+|---|---|---|---|
+| 0.1.0-rc.8 / 0.1.1-rc.2 / 0.1.2-rc.1 | no | no | — |
+| 0.1.5-rc.3 / 0.1.7-rc.2 / 0.2.0-rc.2 | yes | no | — |
+| 0.2.1-rc.1 / 0.2.1-rc.2 | yes | no | — |
+| 0.2.1-rc.3 | yes | yes | no |
+| 0.2.2-rc.3 (DOM-verified 2026-11-14) | yes | yes | **yes** (`div._panelEntry` + `button._panelUnpin`, `button._pinButton` inside the menu) |
 
 On a line without the More row the plugin degrades quietly — it injects nothing and
 leaves the sidebar as shipped. Declaring such a host would only install a plugin
 that does nothing.
 
+**Two measured differences on the 0.2.2 line** (both verified on 0.2.2-rc.3):
+
+1. A row is wrapped in `div._panelEntry` and carries the host's own unpin control. The fold
+   mark therefore has to land on the **wrapper**: hiding only the inner `button._panelRow`
+   left a 32 px empty slot (plus a pin that appears on hover) behind — the real regression
+   v0.1.6 showed on newer hosts.
+2. The host's unpin action *is* “hide in More”: an unpinned row is filtered out of the nav
+   and rendered by `sidebar.panellist.actions` into the “More” menu (each row with a
+   pin-back control). That pin table is in-memory and never persisted, so the plugin keeps
+   two label lists (`keepLabels` / `hideLabels`) as the source of truth and reconciles.
+
 After a host upgrade, re-run the browser smoke test before widening this list:
-CSS-module hashes drift every build (rc.2 emitted `wtg9ga_`, rc.3 emits `hHd-Xa_`),
-so only the fragment selectors (`_panelList`, `_panelRow`, `_moreAnchor`,
-`_collapsed`) are stable.
+CSS-module hashes drift every build (rc.2 emitted `wtg9ga_`, the 0.2.1/0.2.2 rc.3 runtimes
+emit `hHd-Xa_`), so only the fragment selectors (`_panelList`, `_panelRow`, `_moreAnchor`,
+`_collapsed`, `_panelEntry`, `_panelUnpin`, `_pinButton`) are stable.
 
 ## Upgrade guardrail
 
-Host CSS-module hashes drift per build (`wtg9ga_` on rc.2 → `hHd-Xa_` on the rc.3
-runtime), which is why every selector matches a *fragment* (`_panelList`, `_panelRow`,
-`_moreAnchor`, `_collapsed`). **After any host upgrade, re-run the browser smoke**
-before assuming the fold still mounts; the plugin degrades silently by design, so a
-regression shows up as “nothing happened”, not as an error.
+Host CSS-module hashes drift per build (`wtg9ga_` on rc.2 → `hHd-Xa_` on the 0.2.1/0.2.2
+rc.3 runtimes), which is why every selector matches a *fragment* (`_panelList`, `_panelRow`,
+`_moreAnchor`, `_collapsed`, `_panelEntry`, `_panelUnpin`, `_pinButton`). **After any host
+upgrade, re-run the browser smoke** before assuming the three paths still hold: the fold
+mount, the three-state write, and hide/pin-back. The plugin degrades quietly (or disables
+one segment) by design, so a regression shows up as “nothing happened”, not as an error.
 
 ## Layout
 

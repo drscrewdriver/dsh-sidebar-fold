@@ -25,7 +25,7 @@ const outFile = join(root, 'lib', 'client.js')
 const packageName = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).name
 
 /** Concatenation order: leaf modules first, entry last. */
-const MODULES = ['constants.ts', 'locales.ts', 'fold.ts', 'settings-card.ts', 'index.ts']
+const MODULES = ['constants.ts', 'locales.ts', 'fold.ts', 'settings-card.ts', 'menu-entry.ts', 'index.ts']
 
 /**
  * Shared modules the host's module table serves into every browser half.
@@ -113,6 +113,25 @@ for (const name of MODULES) {
 
 const bundle = composeBundle(parts)
 
+// --- top-level declaration collisions --------------------------------------
+// Every module is concatenated into ONE closure, so a name declared at column 0
+// twice is a duplicate declaration: the whole bundle fails to parse and the
+// plugin silently never mounts (measured with two modules both holding
+// `const react`). Fail the build instead of shipping a dead bundle.
+const declarations = new Map()
+for (let index = 0; index < parts.length; index += 1) {
+  for (const line of parts[index].split('\n')) {
+    const match = /^(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/.exec(line)
+    if (match === null) continue
+    const name = match[1]
+    const owner = declarations.get(name)
+    if (owner !== undefined) {
+      throw new Error(`top-level name '${name}' is declared twice (${MODULES[owner]} and ${MODULES[index]}) — the concatenated bundle would not parse`)
+    }
+    declarations.set(name, index)
+  }
+}
+
 // --- bundle gates -----------------------------------------------------------
 if (!bundle.startsWith(`window.__ModuleLoader__.load({`) && !bundle.includes('window.__ModuleLoader__.load({')) {
   throw new Error('bundle must register through window.__ModuleLoader__.load')
@@ -131,4 +150,4 @@ if (illegal.length > 0) {
 
 await mkdir(dirname(outFile), { recursive: true })
 await writeFile(outFile, bundle, 'utf8')
-console.log(`wrote ${outFile} (${bundle.length} chars, ${parts.length} modules)`)
+console.log(`wrote ${outFile} (${bundle.length} chars, ${parts.length} modules, ${declarations.size} top-level names)`)

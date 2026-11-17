@@ -17,6 +17,7 @@ import {
   ALIGN_MODES,
   ATTR,
   CLS,
+  FIXED_LABELS,
   ICON_PATH,
   ICON_PX,
   PANELS_LABELS,
@@ -29,7 +30,7 @@ import {
 import { pickDictionary } from './locales.ts'
 
 /** Minimal DOM surface we touch — keeps the tests free of a DOM dependency. */
-type ConfigLike = { defaultFolded: boolean; keepLabels: string[]; align: AlignMode }
+type ConfigLike = { defaultFolded: boolean; keepLabels: string[]; hideLabels: string[]; align: AlignMode }
 
 /**
  * Coerce a served alignment value into a mode the sheet has a rule for.
@@ -48,20 +49,28 @@ export function normalizeAlign(value: unknown): AlignMode {
 }
 
 /**
+ * What a sidebar row is set to do — the card's three-state control.
+ *
+ * `always` keeps the row in the column at all times, `foldable` lets the fold hide
+ * it, and `more` hands it to the host's own "More" list (the 0.2.2 pin feature).
+ */
+export type RowState = 'always' | 'foldable' | 'more'
+
+/** One sidebar panel row as the settings card shows it. */
+export interface RowInfo {
+  /** The row's accessible name (its aria-label), which is also what config stores. */
+  label: string
+  /** The row's current three-state setting. */
+  state: RowState
+}
+
+/**
  * The row surface this plugin actually uses.
  *
  * Deliberately narrower than `HTMLElement`: the pure seams (row split, nav
  * lookup) are unit-tested against stubs of exactly this shape, and every real
  * `HTMLElement` satisfies it. Anything wider would be an untested promise.
  */
-/** One sidebar panel row as the settings card shows it. */
-export interface RowInfo {
-  /** The row's accessible name (its aria-label), which is also what config stores. */
-  label: string
-  /** True when the row is kept visible while the group is folded. */
-  keep: boolean
-}
-
 export interface RowLike {
   getAttribute(name: string): string | null
   setAttribute(name: string, value: string): void
@@ -74,6 +83,8 @@ export interface RowLike {
   querySelectorAll?(selector: string): NodeListOf<Element>
   matches?(selector: string): boolean
   closest?(selector: string): Element | null
+  /** DOM `Node.contains`, used to tell “the nav itself” from “a row inside it”. */
+  contains?(node: unknown): boolean
 }
 
 /** A queryable subtree (the real `document`, or a stub with the two query faces). */
@@ -96,7 +107,7 @@ let mount: Mount | null = null
 /** Whether the group is folded; `null` = never decided in this window yet. */
 let folded: boolean | null = null
 /** Last config the fold was applied with (also read by the settings card). */
-let config: ConfigLike = { defaultFolded: false, keepLabels: [], align: 'start' }
+let config: ConfigLike = { defaultFolded: false, keepLabels: [], hideLabels: [], align: 'start' }
 /** Registered so `index.ts` can notify the fold after a settings write. */
 const configListeners = new Set<() => void>()
 
@@ -142,23 +153,90 @@ export function isKept(label: string, keepLabels: readonly string[]): boolean {
 }
 
 /**
+ * True when a label belongs to the host's fixed panel row.
+ *
+ * The host never unpins that row (`FIXED_PANEL_ID`), so the third state is not
+ * available for it on any line — offering it would be a promise the host
+ * silently refuses.
+ */
+export function isFixedLabel(label: string): boolean {
+  const needle = label.trim().toLowerCase()
+  if (needle === '') return false
+  return FIXED_LABELS.some((item) => item.toLowerCase() === needle)
+}
+
+/**
+ * Whether one row may be handed to the host's "More" list.
+ *
+ * Two gates: the host must ship the pin mechanism at all, and the row must not
+ * be the fixed one.
+ * @param label - the row's accessible name.
+ * @param hostCanPin - whether this host renders the 0.2.2 row structure.
+ */
+export function canMoveToMore(label: string, hostCanPin: boolean): boolean {
+  return hostCanPin && !isFixedLabel(label)
+}
+
+/**
+ * Drop fixed labels from a stored hide list.
+ *
+ * A config written by an older build (or hand-edited) may list the fixed row;
+ * ignoring it here keeps the fold from chasing a move the host will never do.
+ * @param hideLabels - the served hide list.
+ * @returns the same list without the host's fixed labels.
+ */
+export function pruneHidden(hideLabels: readonly string[]): string[] {
+  return hideLabels.filter((label) => !isFixedLabel(label))
+}
+
+/**
+ * True when a label belongs to the host's "More" list (case/whitespace tolerant).
+ *
+ * An unnamed row is never hidden: the pin control is addressed by name, so a row
+ * we cannot name is a row we cannot move.
+ */
+export function isHidden(label: string, hideLabels: readonly string[]): boolean {
+  const needle = label.trim().toLowerCase()
+  if (needle === '' || isFixedLabel(label)) return false
+  return hideLabels.some((item) => item.trim().toLowerCase() === needle)
+}
+
+/**
+ * One label's three-state setting, resolved from the two stored lists.
+ *
+ * `more` wins over `always`: a label that somehow sits in both lists must leave
+ * the column rather than be silently resurrected by the keep list.
+ */
+export function stateOf(label: string, keepLabels: readonly string[], hideLabels: readonly string[]): RowState {
+  if (isHidden(label, hideLabels)) return 'more'
+  return isKept(label, keepLabels) ? 'always' : 'foldable'
+}
+
+/**
  * Split an ordered row list into the fold header and the fold group.
  *
  * The header is the row with `aria-haspopup="menu"` (the More launcher); with
  * the shipped DOM that is also always the last child, so the fallback keeps
  * working if a host ever drops the attribute. The group is every other row,
- * minus the `keepLabels` whitelist.
+ * minus the `keepLabels` whitelist and minus the `hideLabels` rows (those are on
+ * their way into the host's More list and must not count as foldable).
  * @param rows - the nav's `panelRow` buttons, in document order.
  * @param keepLabels - accessible names that are never folded.
+ * @param hideLabels - accessible names that live in the host's "More" list.
  * @returns the header plus the foldable group, or `null` when there is nothing to fold.
  */
 export function splitRows(
   rows: readonly ElementLike[],
   keepLabels: readonly string[],
+  hideLabels: readonly string[] = [],
 ): { header: ElementLike; group: ElementLike[] } | null {
   if (rows.length < 2) return null
   const header = rows.find((row) => row.getAttribute('aria-haspopup') === 'menu') ?? rows[rows.length - 1]
-  const group = rows.filter((row) => row !== header && !isKept(labelOf(row), keepLabels))
+  const group = rows.filter((row) => {
+    if (row === header) return false
+    const label = labelOf(row)
+    return !isKept(label, keepLabels) && !isHidden(label, hideLabels)
+  })
   return { header, group }
 }
 
@@ -191,8 +269,8 @@ function rowsOf(nav: ElementLike): ElementLike[] {
 }
 
 /** Apply {@link splitRows} to a live nav. */
-function resolveNavGroup(nav: ElementLike, keepLabels: readonly string[]) {
-  return splitRows(rowsOf(nav), keepLabels)
+function resolveNavGroup(nav: ElementLike, keepLabels: readonly string[], hideLabels: readonly string[]) {
+  return splitRows(rowsOf(nav), keepLabels, hideLabels)
 }
 
 /**
@@ -223,6 +301,7 @@ export interface FoldPlan {
  * Decide the fold for one scan.
  * @param rows - the nav's panel rows, in document order.
  * @param keepLabels - rows that stay visible while the group folds.
+ * @param hideLabels - rows handed to the host's "More" list; never folded.
  * @param folded - the window's current fold choice.
  * @param rail - whether the sidebar is currently the 36px icon rail.
  * @returns the plan, or `null` when there is no header/group to work with.
@@ -230,10 +309,11 @@ export interface FoldPlan {
 export function planFold(
   rows: readonly ElementLike[],
   keepLabels: readonly string[],
+  hideLabels: readonly string[],
   folded: boolean,
   rail: boolean,
 ): FoldPlan | null {
-  const resolved = splitRows(rows, keepLabels)
+  const resolved = splitRows(rows, keepLabels, hideLabels)
   if (resolved === null) return null
   const { header, group } = resolved
   const idle = group.length === 0
@@ -255,49 +335,101 @@ const rosterListeners = new Set<() => void>()
 let rosterKey = ''
 
 /**
- * The fold group as the settings card shows it: every sibling panel row of the
- * "More" header, with whether it is currently kept visible.
+ * The rows the settings card shows: the sidebar's own panel rows, the entries the
+ * host already holds in its "More" list, and every label we still hide but whose
+ * row is not on screen right now (the More list is portalled, so it only exists
+ * while it is open).
  *
  * This is read from the **live DOM**, not from config: the point of the card is
- * to offer switches for whatever entries this profile actually has, including
- * ones installed after the card was written.
- * @returns one entry per foldable row, in document order.
+ * to offer controls for whatever this profile actually has, including entries
+ * installed after the card was written.
+ * @returns one entry per manageable row, in document order.
  */
 export function roster(): RowInfo[] {
   const nav = findPanelNav(document as unknown as QueryRoot)
-  if (nav === null) return []
-  return rosterFrom(rowsOf(nav), config.keepLabels)
+  const rows = nav === null ? [] : rosterFrom(rowsOf(nav), config.keepLabels, config.hideLabels)
+  const seen = new Set(rows.map((row) => row.label.toLowerCase()))
+  for (const entry of moreMenuRows()) {
+    if (seen.has(entry.label.toLowerCase())) continue
+    rows.push(entry)
+    seen.add(entry.label.toLowerCase())
+  }
+  // A label we still hide whose row is gone from both surfaces keeps its control:
+  // dropping it would silently drop the setting with it.
+  for (const label of config.hideLabels) {
+    const trimmed = label.trim()
+    if (trimmed === '' || seen.has(trimmed.toLowerCase())) continue
+    rows.push({ label: trimmed, state: 'more' })
+    seen.add(trimmed.toLowerCase())
+  }
+  return rows
+}
+
+/**
+ * The host's own "More" list, read from the portalled menu when it is open.
+ *
+ * The menu is rendered under `document.body`, so its rows never sit inside the
+ * nav and the nav scan can never see them. Each row is a menu item plus a
+ * `_pinButton` whose enclosing `div` owns the label text.
+ * @returns one entry per entry the host currently keeps out of the column.
+ */
+export function moreMenuRows(): RowInfo[] {
+  const out: RowInfo[] = []
+  for (const button of Array.from(document.querySelectorAll(SEL.pinButton))) {
+    const label = ((button as Element).closest('div')?.textContent ?? '').trim()
+    if (label !== '') out.push({ label, state: 'more' })
+  }
+  return out
 }
 
 /**
  * The card's row list, computed from a row array instead of the live DOM.
  * @param rows - the nav's panel rows, in document order.
- * @param keepLabels - rows currently kept visible.
+ * @param keepLabels - rows set to stay visible.
+ * @param hideLabels - rows set to live in the host's "More" list.
  * @returns one entry per sibling of the header, unnamed rows dropped.
  */
-export function rosterFrom(rows: readonly ElementLike[], keepLabels: readonly string[]): RowInfo[] {
-  const resolved = splitRows(rows, keepLabels)
+export function rosterFrom(
+  rows: readonly ElementLike[],
+  keepLabels: readonly string[],
+  hideLabels: readonly string[] = [],
+): RowInfo[] {
+  const resolved = splitRows(rows, keepLabels, hideLabels)
   const header = resolved?.header
   return rows
     .filter((row) => row !== header)
-    .map((row) => ({ label: labelOf(row), keep: isKept(labelOf(row), keepLabels) }))
+    .map((row) => {
+      const label = labelOf(row)
+      return { label, state: stateOf(label, keepLabels, hideLabels) }
+    })
     .filter((row) => row.label !== '')
 }
 
 /**
- * Fold the per-row switches into the stored keep list.
+ * Fold one row's moved control into the two stored lists.
  *
- * The switch state IS the storage: switched-on rows are the kept ones, so a row
- * that disappeared from the sidebar drops out and a new row starts folded.
+ * The control state IS the storage: `always` rows are the keep list, `more` rows
+ * are the hide list, and `foldable` rows appear in neither. A row that dropped
+ * out of the roster loses its entry, and a row that appears starts foldable —
+ * which is what the shipped default means.
  * @param rows - the roster the card rendered.
- * @param label - the row whose switch moved.
+ * @param label - the row whose control moved.
  * @param next - its new state.
- * @returns the labels to write to `keepLabels`.
+ * @returns the two label lists to write to config.
  */
-export function deriveKeep(rows: readonly RowInfo[], label: string, next: boolean): string[] {
-  return rows
-    .filter((row) => (row.label === label ? next : row.keep))
-    .map((row) => row.label)
+export function deriveLists(
+  rows: readonly RowInfo[],
+  label: string,
+  next: RowState,
+): { keepLabels: string[]; hideLabels: string[] } {
+  const keepLabels: string[] = []
+  const hideLabels: string[] = []
+  for (const row of rows) {
+    const state = row.label === label ? next : row.state
+    if (state === 'always') keepLabels.push(row.label)
+    else if (state === 'more') hideLabels.push(row.label)
+  }
+  return { keepLabels, hideLabels }
 }
 
 /**
@@ -312,9 +444,9 @@ export function subscribeRoster(listener: () => void): () => void {
   }
 }
 
-/** Tell the card that the row inventory (or its keep flags) changed. */
+/** Tell the card that the row inventory (or one row's state) changed. */
 function notifyRoster(rows: RowInfo[]): void {
-  const key = rows.map((row) => `${row.label}:${row.keep ? 1 : 0}`).join('|')
+  const key = rows.map((row) => `${row.label}:${row.state}`).join('|')
   if (key === rosterKey) return
   rosterKey = key
   for (const listener of Array.from(rosterListeners)) {
@@ -329,6 +461,47 @@ function notifyRoster(rows: RowInfo[]): void {
 /** The narrow-rail state: the host hides labels and every row is 36px wide. */
 function isRail(nav: ElementLike): boolean {
   return nav.closest?.(SEL.collapsed) !== null && nav.closest?.(SEL.collapsed) !== undefined
+}
+
+/**
+ * True when this row holds the panel the host marks as current.
+ *
+ * Two signals, because the line changed shape: the shipped rows carry
+ * `aria-current="page"`, and from 0.2.2 on the wrapper carries
+ * `_panelEntryActive`.
+ * @param row - one panel-row button.
+ */
+function isActiveRow(row: ElementLike): boolean {
+  if (row.getAttribute('aria-current') === 'page') return true
+  const entry = row.closest?.(SEL.panelEntry) as Element | null | undefined
+  return (entry?.className ?? '').includes('_panelEntryActive')
+}
+
+/**
+ * Whether a mutation batch could concern the sidebar at all.
+ *
+ * The observer sees the whole body, so the first thing every batch gets is this
+ * cheap filter: a streaming reply mutates the tree dozens of times per second,
+ * and none of it can change the fold. Only added/removed nodes that are (or
+ * contain) a panel row count.
+ * @param records - one observer batch.
+ * @returns true when at least one record adds or removes a panel row.
+ */
+export function recordsTouchRows(
+  records: readonly { type?: string; addedNodes?: ArrayLike<unknown> | null; removedNodes?: ArrayLike<unknown> | null }[],
+): boolean {
+  for (const record of records) {
+    if (record.type !== undefined && record.type !== 'childList') continue
+    const nodes = [...Array.from(record.addedNodes ?? []), ...Array.from(record.removedNodes ?? [])]
+    for (const node of nodes) {
+      const element = node as ElementLike | null
+      if (element === null || typeof element !== 'object' || (element as unknown as Node).nodeType !== 1) continue
+      if (element.matches?.(SEL.panelRow) === true) return true
+      const inside = element.querySelector?.(SEL.panelRow)
+      if (inside !== null && inside !== undefined) return true
+    }
+  }
+  return false
 }
 
 /** Inject (once) the sheet that draws the toggle and hides folded rows. */
@@ -393,6 +566,139 @@ function paintToggle(toggle: ElementLike, options: { idle?: boolean }): void {
 }
 
 /**
+ * True when this host ships the 0.2.2 row wrapper, i.e. it owns the pin feature.
+ *
+ * The third state ("hide into More") is not ours to draw: the host removes the
+ * row from the column and renders it in its own menu. What we own is driving it,
+ * and the wrapper is the structure that says the host can be driven.
+ */
+export function hostHasPin(): boolean {
+  return document.querySelector(SEL.panelEntry) !== null
+}
+
+/**
+ * The element a fold mark must hide.
+ *
+ * From the 0.2.2 line on, a row button is wrapped in `div._panelEntry` that also
+ * carries the host's own pin control; hiding only the button left an empty entry
+ * with a hover-visible pin behind (measured on 0.2.2-rc.3). Hiding the wrapper
+ * takes the whole row with it and leaves the shipped DOM untouched on older lines.
+ *
+ * Exported as a seam: it is the one line that decides whether the host's
+ * `.panelList { gap: 2px }` still sees an item, so the test has to reach it.
+ */
+export function foldTarget(row: ElementLike): ElementLike {
+  return (row.closest?.(SEL.panelEntry) ?? row) as ElementLike
+}
+
+/** The host's own "unpin" control of one row, or `null` in the 36px rail. */
+function unpinControl(row: ElementLike): HTMLElement | null {
+  const scope = foldTarget(row)
+  return (scope.querySelector?.(SEL.panelUnpin) ?? null) as HTMLElement | null
+}
+
+/** The label text of one row inside the portalled "More" list. */
+function menuRowLabel(control: Element): string {
+  return (control.closest('div')?.textContent ?? '').trim()
+}
+
+/** One key form for label matching (the host writes labels, we compare them). */
+function labelKey(label: string): string {
+  return label.trim().toLowerCase()
+}
+
+/** The "More" list's pin-back control for one label, when that list is on screen. */
+function pinControl(label: string): HTMLElement | null {
+  const key = labelKey(label)
+  if (key === '') return null
+  for (const control of Array.from(document.querySelectorAll(SEL.pinButton))) {
+    if (labelKey(menuRowLabel(control)) === key) return control as HTMLElement
+  }
+  return null
+}
+
+/** One label we owe the host a move, with how many times we asked and when. */
+const pinMoves = new Map<string, { tries: number; at: number }>()
+/** Labels waiting for the host to put their row back into the column. */
+const restoreWanted = new Map<string, number>()
+/** One label is moved at most this often: every click re-renders the sidebar. */
+const PIN_COOLDOWN_MS = 1000
+/** Moves per label before this window gives up (a rail refuses, so stop asking). */
+const PIN_MAX_TRIES = 3
+/** How long a pin-back request waits for the list's pin control to render. */
+const RESTORE_WINDOW_MS = 2000
+
+/**
+ * Ask the host to move every `more` row out of the column.
+ *
+ * Only the host owns that decision (`setPinned` is not a plugin surface), so the
+ * move rides its own pin control. The call is bounded: at most {@link PIN_MAX_TRIES}
+ * clicks per label per window, at most one per {@link PIN_COOLDOWN_MS}, and never
+ * while the row is missing its control (the 36px rail renders none).
+ * @param rows - the nav's panel rows, in document order.
+ */
+function moveRowsToMore(rows: readonly ElementLike[]): void {
+  if (!hostHasPin() || config.hideLabels.length === 0) return
+  const now = Date.now()
+  for (const row of rows) {
+    const label = labelOf(row)
+    if (!isHidden(label, config.hideLabels)) continue
+    const key = labelKey(label)
+    const move = pinMoves.get(key)
+    if (move !== undefined && (move.tries >= PIN_MAX_TRIES || now - move.at < PIN_COOLDOWN_MS)) continue
+    const control = unpinControl(row)
+    if (control === null) continue
+    pinMoves.set(key, { tries: (move?.tries ?? 0) + 1, at: now })
+    control.click()
+  }
+}
+
+/**
+ * Ask the host to pin rows back into the column.
+ *
+ * The pin-back control exists only inside the host's portalled "More" list, so
+ * this opens that list when needed and waits for the control to render: the
+ * sidebar's own mutation stream drives the retry, no timer of ours.
+ * @param rows - the nav's panel rows, in document order.
+ */
+function pinRowsBack(rows: readonly ElementLike[]): void {
+  if (restoreWanted.size === 0) return
+  if (!hostHasPin()) {
+    restoreWanted.clear()
+    return
+  }
+  const now = Date.now()
+  const present = new Set(rows.map((row) => labelKey(labelOf(row))))
+  let missing = 0
+  for (const [key, at] of Array.from(restoreWanted)) {
+    // The row already came back (a restart drops the host's in-memory pins).
+    if (present.has(key)) {
+      restoreWanted.delete(key)
+      continue
+    }
+    if (now - at > RESTORE_WINDOW_MS) {
+      restoreWanted.delete(key)
+      continue
+    }
+    const control = pinControl(key)
+    if (control !== null) {
+      control.click()
+      restoreWanted.delete(key)
+      continue
+    }
+    missing += 1
+  }
+  if (missing > 0) openMoreList()
+}
+
+/** Open the host's "More" list if it is closed (idempotent through aria-expanded). */
+function openMoreList(): void {
+  const anchor = document.querySelector(`${SEL.panelRow}[aria-haspopup="menu"]`)
+  if (anchor === null || anchor.getAttribute('aria-expanded') === 'true') return
+  ;(anchor as HTMLElement).click()
+}
+
+/**
  * Write the fold marks. Only attributes we own are touched: no host class,
  * no host attribute, and never the anchor's `aria-expanded` (that one is the
  * dropdown menu's state, not ours).
@@ -400,7 +706,7 @@ function paintToggle(toggle: ElementLike, options: { idle?: boolean }): void {
 function applyFold(): void {
   if (mount === null) return
   const rows = rowsOf(mount.nav)
-  const plan = planFold(rows, config.keepLabels, currentFolded(), isRail(mount.nav))
+  const plan = planFold(rows, config.keepLabels, config.hideLabels, currentFolded(), isRail(mount.nav))
   if (plan === null) return
   const { header } = plan
   if (header.getAttribute(ATTR.header) === null) header.setAttribute(ATTR.header, '')
@@ -411,7 +717,7 @@ function applyFold(): void {
   if (mount.nav.getAttribute(ATTR.align) !== align) mount.nav.setAttribute(ATTR.align, align)
 
   // The settings card renders whatever is on screen right now; keep it in sync.
-  notifyRoster(rosterFrom(rows, config.keepLabels))
+  notifyRoster(rosterFrom(rows, config.keepLabels, config.hideLabels))
 
   // Nothing to fold (every sibling is kept): say so on the control instead of
   // flipping the arrow over an unchanged list — the first report of "arrow moves
@@ -421,10 +727,13 @@ function applyFold(): void {
 
   for (const row of rows) {
     const want = plan.folded.includes(row)
+    // The mark lands on the row's wrapper where the host ships one (0.2.2 on),
+    // so an emptied `_panelEntry` cannot outlive its row.
+    const target = foldTarget(row)
     // Touch an attribute only when it actually changes: every write is a
     // mutation, and every mutation triggers the rescan that caused this write.
-    if (want && !row.getAttribute(ATTR.folded)) row.setAttribute(ATTR.folded, '')
-    else if (!want && row.getAttribute(ATTR.folded) !== null) row.removeAttribute(ATTR.folded)
+    if (want && !target.getAttribute(ATTR.folded)) target.setAttribute(ATTR.folded, '')
+    else if (!want && target.getAttribute(ATTR.folded) !== null) target.removeAttribute(ATTR.folded)
   }
   // The plan owns the idle case too: an idle control carries no state mark.
   if (plan.state !== null && mount.nav.getAttribute(ATTR.state) !== plan.state) mount.nav.setAttribute(ATTR.state, plan.state)
@@ -432,12 +741,21 @@ function applyFold(): void {
   // A 36px rail has no room for a second 28px square: hand the row back to the host.
   ;(mount.toggle as HTMLElement).style.display = plan.toggleVisible ? 'inline-flex' : 'none'
   paintToggle(mount.toggle, { idle: plan.idle })
+  // Folded while the current panel is one of the folded rows: mark the control so
+  // a 5px dot can say “what you are reading lives in here”.
+  const holdsActive = plan.active && plan.group.some((row) => isActiveRow(row))
+  if (holdsActive && mount.toggle.getAttribute(ATTR.activeInside) === null) mount.toggle.setAttribute(ATTR.activeInside, '')
+  else if (!holdsActive && mount.toggle.getAttribute(ATTR.activeInside) !== null) mount.toggle.removeAttribute(ATTR.activeInside)
+  // Last, because both hand the sidebar back to the host and every click causes a
+  // re-render: the third state and its recovery ride on the host's own pin controls.
+  moveRowsToMore(rows)
+  pinRowsBack(rows)
 }
 /** Toggle the group and persist the choice. */
 function toggleFold(): void {
   // An empty group must not pretend to fold: ignore the gesture entirely.
   if (mount !== null) {
-    const resolved = resolveNavGroup(mount.nav, config.keepLabels)
+    const resolved = resolveNavGroup(mount.nav, config.keepLabels, config.hideLabels)
     if (resolved !== null && resolved.group.length === 0) return
   }
   folded = !currentFolded()
@@ -526,7 +844,7 @@ export function rescan(): boolean {
     unmount()
     return false
   }
-  const resolved = resolveNavGroup(nav, config.keepLabels)
+  const resolved = resolveNavGroup(nav, config.keepLabels, config.hideLabels)
   if (resolved === null) {
     unmount()
     return false
@@ -576,6 +894,10 @@ function sweep(): void {
     row.removeAttribute(ATTR.folded)
   }
   mount = null
+  // The pin bookkeeping belongs to one window's DOM; a remount starts from what
+  // the host shows now, never from a count that may no longer refer to it.
+  pinMoves.clear()
+  restoreWanted.clear()
 }
 
 /**
@@ -584,7 +906,7 @@ function sweep(): void {
  * @returns a disposer that leaves the sidebar exactly as shipped.
  */
 export function installFold(cfg: ConfigLike): () => void {
-  config = { defaultFolded: cfg.defaultFolded, keepLabels: [...cfg.keepLabels], align: normalizeAlign(cfg.align) }
+  config = copyConfig(cfg)
   readStored()
   sweep()
   let observer: MutationObserver | null = null
@@ -594,10 +916,35 @@ export function installFold(cfg: ConfigLike): () => void {
   const schedule = (): void => {
     if (queued) return
     queued = true
+    // 50ms, not 16: the sidebar re-renders on every pin/selection and a streaming
+    // reply mutates the tree many times per frame. One scan per burst is enough.
     setTimeout(() => {
       queued = false
       rescan()
-    }, 16)
+    }, 50)
+  }
+  /**
+   * Feed the observer's batches through a relevance filter before scanning.
+   *
+   * A batch matters when it adds/removes a panel row, or when a `class` flips on
+   * the nav, one of its ancestors (the 36px rail switch) or a row inside it (the
+   * wrapper's active mark, which the dot follows).
+   */
+  const onMutations = (records: MutationRecord[]): void => {
+    if (recordsTouchRows(records)) {
+      schedule()
+      return
+    }
+    const nav = mount?.nav ?? findPanelNav(document as unknown as QueryRoot)
+    if (nav === null) return
+    for (const record of records) {
+      if (record.type !== 'attributes') continue
+      const target = record.target as unknown as ElementLike
+      if (target === nav || target.contains?.(nav) === true || nav.contains?.(target) === true) {
+        schedule()
+        return
+      }
+    }
   }
   /**
    * Boot retry: the sidebar can mount after this plugin, and a hidden/background
@@ -617,7 +964,7 @@ export function installFold(cfg: ConfigLike): () => void {
     // `attributes` matters: collapsing the sidebar only flips a `class` on an
     // ancestor, and the childList mutations of that same commit can land before
     // the class change (measured) — watching only children read a stale rail.
-    observer = new MutationObserver(schedule)
+    observer = new MutationObserver(onMutations)
     observer.observe(document.body, {
       childList: true,
       subtree: true,
@@ -641,17 +988,44 @@ export function installFold(cfg: ConfigLike): () => void {
 /**
  * Adopt a freshly served configuration (settings write, or first read) and
  * repaint immediately — no restart, no reload.
+ *
+ * A label that left `hideLabels` is queued for a pin-back: the host put the row
+ * in its own "More" list, and only that list's control can bring it back.
  */
 export function applyConfig(cfg: ConfigLike): void {
-  config = { defaultFolded: cfg.defaultFolded, keepLabels: [...cfg.keepLabels], align: normalizeAlign(cfg.align) }
+  const previousHide = config.hideLabels
+  config = copyConfig(cfg)
+  const now = Date.now()
+  for (const label of previousHide) {
+    if (isHidden(label, config.hideLabels)) continue
+    const key = labelKey(label)
+    if (key !== '') restoreWanted.set(key, now)
+  }
   for (const listener of Array.from(configListeners)) listener()
   applyFold()
 }
 
+/** One deep copy of a served configuration, with the alignment coerced. */
+function copyConfig(cfg: ConfigLike): ConfigLike {
+  return {
+    defaultFolded: cfg.defaultFolded,
+    keepLabels: [...cfg.keepLabels],
+    // The fixed row can never be handed to the host, so a stale entry for it is
+    // dropped on the way in instead of being retried on every scan.
+    hideLabels: pruneHidden(cfg.hideLabels),
+    align: normalizeAlign(cfg.align),
+  }
+}
+
 /** The configuration the fold is currently running with (settings card reads it). */
 export function effectiveConfig(): ConfigLike {
-  return { defaultFolded: config.defaultFolded, keepLabels: [...config.keepLabels], align: normalizeAlign(config.align) }
+  return copyConfig(config)
 }
 
 /** Built-in defaults, used when a host serves no writable configuration surface. */
-export const BUILTIN_CONFIG: ConfigLike = { defaultFolded: false, keepLabels: ['插件', 'Plugins'], align: 'start' }
+export const BUILTIN_CONFIG: ConfigLike = {
+  defaultFolded: false,
+  keepLabels: ['插件', 'Plugins'],
+  hideLabels: [],
+  align: 'start',
+}

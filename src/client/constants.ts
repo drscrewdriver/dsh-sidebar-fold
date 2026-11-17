@@ -30,6 +30,11 @@ export const CLS = Object.freeze({
   switchKnob: 'dshsf-switch-knob',
   segmentGroup: 'dshsf-segment-group',
   segment: 'dshsf-segment',
+  /** "More" menu shortcut row: its group wrapper, the row, its text and glyph. */
+  menuGroup: 'dshsf-menu-group',
+  menuRow: 'dshsf-menu-row',
+  menuText: 'dshsf-menu-text',
+  menuIcon: 'dshsf-menu-icon',
 })
 
 /**
@@ -58,6 +63,8 @@ export const ATTR = Object.freeze({
   own: 'data-dshsf-own',
   /** On the nav: row-content alignment (`start` | `center` | `end`). */
   align: 'data-dshsf-align',
+  /** On the toggle: the folded group holds the panel the user is looking at. */
+  activeInside: 'data-dshsf-active-inside',
 })
 
 /** Selector fragments (hash-tolerant). */
@@ -70,6 +77,17 @@ export const SEL = Object.freeze({
   moreAnchor: '[class*="_moreAnchor"]',
   /** Sidebar root modifier present exactly while the column is a narrow rail. */
   collapsed: '[class*="_collapsed"]',
+  /**
+   * Per-row wrapper shipped from the 0.2.2 line on (`div._panelEntry`): the row
+   * button is its child, and it carries the host's own row fill. Hiding only the
+   * button there leaves an empty entry (plus its pin control) behind, so the fold
+   * mark has to land on this wrapper when it exists.
+   */
+  panelEntry: 'div[class*="_panelEntry"]',
+  /** The host's own "unpin" control inside a row — rendered at the wide width only. */
+  panelUnpin: 'button[class*="_panelUnpin"]',
+  /** The "pin back" control inside the portalled "More" list (0.2.2 on). */
+  pinButton: 'button[class*="_pinButton"]',
 })
 
 /** `localStorage` key for the open/closed state (window-level UI state, by design). */
@@ -80,6 +98,16 @@ export const MORE_LABELS = Object.freeze(['更多', 'More'])
 
 /** Accessible-name strings of the "Global panels" nav label (`client.js:533`). */
 export const PANELS_LABELS = Object.freeze(['全局面板', 'Global panels'])
+
+/**
+ * The host's own fixed panel row — `FIXED_PANEL_ID = 'plugins'` in the 0.2.2
+ * sidebar (`SidebarRoot.tsx`: `canUnpin = hasEntryActions && id !== FIXED_PANEL_ID`).
+ *
+ * It is the one entry the host never unpins, so offering “hide in More” for it
+ * would be a promise the host silently refuses. The names are the only handle we
+ * have: the id never reaches the DOM.
+ */
+export const FIXED_LABELS = Object.freeze(['插件', 'Plugins'])
 
 /** Self-drawn chevron geometry: the host `primitives` package is off-limits to plugins. */
 export const ICON_PATH = Object.freeze({
@@ -119,6 +147,14 @@ export const SHEET = [
   // `center!important` is a parse error in some engines and silently dropped.
   rule(`[${ATTR.align}="center"] ${SEL.panelRow}`, ['justify-content: center !important']),
   rule(`[${ATTR.align}="end"] ${SEL.panelRow}`, ['justify-content: flex-end !important']),
+  // 0.2.2 reserves the row's right gutter for its own pin control (host rule:
+  // `.panelEntryWide .panelRow { padding-right: 38px }`). That gutter is real for
+  // `start`/`end`, but at `center` it pushes the labelled pair off-centre, so the
+  // gutter is folded back into the row's shipped inset there. This selector is
+  // more specific than the host rule, so no `!important` is needed.
+  rule(`[${ATTR.align}="center"] ${SEL.panelEntry} ${SEL.panelRow}`, [
+    'padding-right: calc(var(--dsh-sidebar-row-padding, 12px) - var(--dsh-sidebar-paint-inset, 3px))',
+  ]),
   rule(`.${CLS.toggle}`, [
     'position:absolute',
     'right:4px',
@@ -141,6 +177,18 @@ export const SHEET = [
   rule(`.${CLS.toggle}:hover`, ['background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.16))']),
   rule(`.${CLS.toggleIdle}`, ['opacity:.45', 'cursor:default']),
   rule(`.${CLS.toggleIdle}:hover`, ['background:transparent']),
+  // Folded, but the panel being looked at is one of the folded rows: a 5px dot
+  // says “what you are reading is inside here”, which a bare chevron cannot.
+  rule(`.${CLS.toggle}[${ATTR.activeInside}]::after`, [
+    'content:""',
+    'position:absolute',
+    'top:4px',
+    'right:4px',
+    'width:5px',
+    'height:5px',
+    'border-radius:50%',
+    'background:var(--dsw-alias-accent,var(--dsw-alias-state-business-primary,#4d6bfe))',
+  ]),
   rule(`.${CLS.toggle}:focus-visible`, [
     'outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#666))',
     'outline-offset:-2px',
@@ -234,4 +282,38 @@ export const SHEET = [
     'outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#666))',
     'outline-offset:1px',
   ]),
+  // "More" menu shortcut row. The host's own action rows live in that list behind
+  // their own hairline; a list seat can only append, so this row carries the
+  // hairline itself and closes the action group.
+  rule(`.${CLS.menuGroup}`, [
+    'margin-top:6px',
+    'padding-top:6px',
+    'border-top:1px solid var(--dsw-alias-hairline,rgba(127,127,127,.22))',
+  ]),
+  rule(`.${CLS.menuRow}`, [
+    'box-sizing:border-box',
+    'display:flex',
+    'align-items:center',
+    'gap:8px',
+    'width:100%',
+    'height:32px',
+    'margin:0',
+    'padding:0 10px',
+    'border:0',
+    'border-radius:var(--dsw-radius-md,8px)',
+    'background:transparent',
+    'font:inherit',
+    'font-size:13px',
+    'color:var(--dsw-alias-label-primary,inherit)',
+    'text-align:left',
+    'cursor:pointer',
+    '-webkit-app-region:no-drag',
+  ]),
+  rule(`.${CLS.menuRow}:hover`, ['background:var(--dsw-alias-interactive-bg-hover,rgba(127,127,127,.16))']),
+  rule(`.${CLS.menuRow}:focus-visible`, [
+    'outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary,#666))',
+    'outline-offset:-2px',
+  ]),
+  rule(`.${CLS.menuText}`, ['overflow:hidden', 'text-overflow:ellipsis', 'white-space:nowrap']),
+  rule(`.${CLS.menuIcon}`, ['flex:none', 'display:block']),
 ].join('')

@@ -13,6 +13,7 @@
  */
 import { PKG_NAME } from './constants.ts'
 import { applyConfig, BUILTIN_CONFIG, installFold, normalizeAlign, rescan } from './fold.ts'
+import { createSettingsRow, adoptPluginNavigation } from './menu-entry.ts'
 import { createConfigCard, onFallback, onScope, type SettingsScopeLike } from './settings-card.ts'
 
 /** Cordis services the client half reads. Only `slots` is unconditional. */
@@ -52,6 +53,9 @@ function adopt(scope: SettingsScopeLike): void {
     const next = {
       defaultFolded: typeof value?.defaultFolded === 'boolean' ? value.defaultFolded : BUILTIN_CONFIG.defaultFolded,
       keepLabels: Array.isArray(value?.keepLabels) ? value.keepLabels : BUILTIN_CONFIG.keepLabels,
+      // The third state: rows the host owns in its "More" list. Absent on a host
+      // that serves an older document, so it falls back to none.
+      hideLabels: Array.isArray(value?.hideLabels) ? value.hideLabels : BUILTIN_CONFIG.hideLabels,
       // Alignment is validated by `normalizeAlign` here so everything downstream
       // (fold marks, card radios) only ever sees one of the three known modes.
       align: normalizeAlign(typeof value?.align === 'string' ? value.align : BUILTIN_CONFIG.align),
@@ -144,6 +148,14 @@ function bindSettingsWaists(ctx: ClientCtx): void {
       }
     })
   })
+
+  // The More-menu row navigates with this service; without it the row falls back
+  // to selecting the plugins panel, so the seat is optional all the way down.
+  safe('pluginNavigation', () => {
+    ctx.inject?.(['pluginNavigation'], (sctx) => {
+      adoptPluginNavigation(sctx.pluginNavigation)
+    })
+  })
 }
 
 /** Register the configuration card on this bundle's detail page. */
@@ -163,6 +175,29 @@ function mountConfigCard(ctx: ClientCtx): void {
 }
 
 /**
+ * Add the "More" menu row that jumps straight to this bundle's settings page.
+ *
+ * Seated in `sidebar.panellist.actions` — the list the shipped More menu renders,
+ * so the row inherits the menu's keyboard walk and dismiss path. `order: 100`
+ * keeps it after the host's own rows (a list seat can only append).
+ */
+function mountMenuEntry(ctx: ClientCtx): void {
+  safe('panellist.actions', () => {
+    ctx.slots.inject('sidebar.panellist.actions', () =>
+      ctx.slots.register(
+        {
+          name: 'sidebar.panellist.actions',
+          id: `${PKG_NAME}-settings`,
+          order: 100,
+          inject: () => ({}),
+        },
+        createSettingsRow(ctx) as unknown as () => unknown,
+      ),
+    )
+  })
+}
+
+/**
  * Activate the plugin.
  * @param ctx - the client context, narrowed to the faces this plugin probes.
  */
@@ -173,6 +208,7 @@ export function apply(ctx: ClientCtx): void {
   disposer = installFold(BUILTIN_CONFIG)
   mountedNow = rescan()
   mountConfigCard(ctx)
+  mountMenuEntry(ctx)
   bindSettingsWaists(ctx)
   // One line so a silent failure is never silent: without this the sidebar simply
   // keeps its shipped shape and nothing says why. `mounted:false` means the
