@@ -1,5 +1,5 @@
 /**
- * Runtime dictionaries for the browser half (9 languages, zh key set is the
+ * Runtime dictionaries for the browser half (10 languages, zh key set is the
  * source of truth — `dsh-plugin-dev` §4).
  *
  * These strings are ours: the toggle's accessible name and the settings card.
@@ -263,8 +263,37 @@ export const es: Record<LocaleKey, string> = {
   'settings.readonly': 'Este host no expone una superficie de configuración editable; se muestran los valores predeterminados.',
 }
 
+/** Brazilian Portuguese dictionary, checked complete against the zh key set. */
+export const pt: Record<LocaleKey, string> = {
+  'fold.nothing': 'Não há entradas para recolher agora',
+  'fold.expand': 'Expandir mais entradas da barra lateral',
+  'fold.collapse': 'Recolher mais entradas da barra lateral',
+  'menu.settings': 'Configurações de recolhimento da barra lateral',
+  'settings.defaultFolded': 'Recolhido por padrão',
+  'settings.defaultFoldedHint': 'Estado inicial de uma janela sem registro local',
+  'settings.rows': 'Entradas',
+  'settings.rowsHint': 'Três estados por linha: Mostrar mantém a linha sempre visível; Recolher permite o recolhimento; Ocultar em «Mais» move a linha para o menu «Mais».',
+  'settings.rowAlways': 'Mostrar',
+  'settings.rowFold': 'Recolher',
+  'settings.rowMore': 'Ocultar em «Mais»',
+  'settings.rowHint': 'Mostrar = sempre visível; Recolher = pode ser recolhida',
+  'settings.rowsEmpty': 'A barra lateral não tem entradas gerenciáveis no momento.',
+  'settings.moreUnavailable': 'Este host não oculta entradas em «Mais» (requer a barra lateral 0.2.2 ou mais recente).',
+  'settings.moreFixed': 'Entrada fixa do host: não pode ser ocultada em «Mais».',
+  'settings.saving': 'Salvando…',
+  'settings.saved': 'Salvo',
+  'settings.saveFailed': 'Falha ao salvar: aplicado na barra lateral, mas o host não gravou em disco.',
+  'settings.retrySave': 'Tentar salvar novamente',
+  'settings.align': 'Alinhamento do texto e do ícone',
+  'settings.alignHint': 'Vale para as linhas de entrada gerenciadas pelo recolhimento na barra lateral; a linha «Mais» segue o mesmo alinhamento.',
+  'settings.alignStart': 'Esquerda',
+  'settings.alignCenter': 'Centralizado',
+  'settings.alignEnd': 'Direita',
+  'settings.readonly': 'Este host não expõe uma superfície de configuração editável; são exibidos os valores padrão incorporados.',
+}
+
 /** Registered dictionaries, zh first (the truth source). */
-export const languages = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'it', 'ru', 'es'] as const
+export const languages = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'it', 'ru', 'es', 'pt'] as const
 
 /** One of the supported language tags. */
 export type Language = (typeof languages)[number]
@@ -280,6 +309,7 @@ export const dictionaries: Record<Language, Record<LocaleKey, string>> = {
   it,
   ru,
   es,
+  pt,
 }
 
 /**

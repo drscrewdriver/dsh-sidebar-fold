@@ -103,14 +103,14 @@ if (clientBundle) {
 const localeDir = await readdir(join(root, 'locale')).catch(() => null)
 if (localeDir === null) fail.push('缺少 locale/ 目录')
 else {
-  for (const lang of ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'it', 'ru', 'es']) {
+  for (const lang of ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'it', 'ru', 'es', 'pt']) {
     if (!localeDir.includes(`${lang}.json`)) fail.push(`locale/${lang}.json 缺失`)
   }
   if (!localeDir.includes('en.json')) fail.push('locale/en.json 是宿主扫描的必需锚')
 }
 const localesTs = await text('src/client/locales.ts')
-const dictionaryCount = (localesTs.match(/^export const (zh|en|ja|ko|fr|de|it|ru|es):?/gm) ?? []).length
-if (dictionaryCount !== 9) fail.push(`src/client/locales.ts 应含 9 部词典，实为 ${dictionaryCount}`)
+const dictionaryCount = (localesTs.match(/^export const (zh|en|ja|ko|fr|de|it|ru|es|pt):?/gm) ?? []).length
+if (dictionaryCount !== 10) fail.push(`src/client/locales.ts 应含 10 部词典，实为 ${dictionaryCount}`)
 
 // --- files[] completeness & portability -----------------------------------
 const filesField = pkg.files ?? []

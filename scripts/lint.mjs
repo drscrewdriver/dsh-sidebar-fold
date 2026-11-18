@@ -108,10 +108,10 @@ for (const line of importantLines) {
   if (!line.includes('justify-content')) fail('important-only-for-alignment', 'src/client/constants.ts', `unexpected !important: ${line.trim().slice(0, 60)}`)
 }
 
-// ── rule: locale-parity — the zh key set is the truth source, 9 files must match ─
+// ── rule: locale-parity — the zh key set is the truth source, 10 files must match ─
 const localesFile = join(root, 'src/client/locales.ts')
 const localesText = read(localesFile)
-const LANGS = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'it', 'ru', 'es']
+const LANGS = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'it', 'ru', 'es', 'pt']
 const keySets = {}
 for (let i = 0; i < LANGS.length; i += 1) {
   const start = localesText.indexOf(`export const ${LANGS[i]}`)

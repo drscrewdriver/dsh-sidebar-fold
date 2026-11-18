@@ -1,5 +1,5 @@
 /**
- * gen-locale-meta.mjs —— 生成 `locale/<lang>.json` 包元数据（9 语）。
+ * gen-locale-meta.mjs —— 生成 `locale/<lang>.json` 包元数据（10 语）。
  *
  * 宿主在装载期扫描每个 bundle 的 `locale/<lang>.json`（`en.json` 为必需锚），
  * 其形状与 shipped 侧边栏一致：`{ meta: { title, description } }`。运行时文案
@@ -24,6 +24,7 @@ const META = {
   it: { title: 'Compressione “Altro” della barra laterale', description: 'Aggiunge un interruttore a freccia quadrata sulla riga “Altro” per comprimere le righe dei pannelli aggiunti della barra laterale; stato predefinito ed elenco di esclusioni configurabili.' },
   ru: { title: 'Сворачивание «Ещё» боковой панели', description: 'Добавляет квадратный переключатель со стрелкой на строке «Ещё», сворачивая добавленные строки панелей боковой панели в одну; настраиваемые исходное состояние и список исключений.' },
   es: { title: 'Plegado de «Más» de la barra lateral', description: 'Añade un conmutador de flecha cuadrada en la fila «Más» para plegar las filas de paneles añadidas de la barra lateral; estado predeterminado y lista de exclusiones configurables.' },
+  pt: { title: 'Recolhimento de «Mais» da barra lateral', description: 'Adiciona um comutador de seta quadrada na linha «Mais» para recolher as linhas de painéis adicionados da barra lateral em uma única linha; estado padrão e lista de exceções configuráveis.' },
 }
 
 await mkdir(outDir, { recursive: true })

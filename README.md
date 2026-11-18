@@ -95,7 +95,7 @@ the hide list.
 ```sh
 npm run build        # scripts/build-client.mjs -> lib/client.js (module-loader bundle)
 npm run verify       # gate: loader id === package name, dual-manifest same string,
-                     #       no module request, no host primitives, 9 locales, no
+                     #       no module request, no host primitives, 10 locales, no
                      #       machine-absolute paths
 npm test             # node --test on the pure seams (header split, nav fallback chain)
 npm run hosts:check  # enumeration drift vs scripts/hosts.mjs (--write to repair)
@@ -152,7 +152,7 @@ one segment) by design, so a regression shows up as “nothing happened”, not 
 ```
 src/index.js              host half: Config schema + no-op apply (no build step)
 src/client/constants.ts   measured anchors, attribute marks, injected stylesheet
-src/client/locales.ts     9 runtime dictionaries (zh = key-set source of truth)
+src/client/locales.ts     10 runtime dictionaries (zh = key-set source of truth)
 src/client/fold.ts        nav location, header/group split, toggle mount, fold state
 src/client/settings-card.ts  the bundle-page configuration card (plain DOM)
 src/client/index.ts       apply: fold first, then the guarded settings waists

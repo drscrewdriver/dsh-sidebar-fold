@@ -78,7 +78,7 @@ key 为包名）；或点侧栏 **「更多」菜单最下面的「侧栏折叠�
 ```sh
 npm run build        # scripts/build-client.mjs -> lib/client.js（模块加载器 bundle）
 npm run verify       # 门禁：loader id === 包名、双清单同串、无模块请求、
-                     #       不引宿主 primitives、9 语词典、无机器绝对路径
+                     #       不引宿主 primitives、10 语词典、无机器绝对路径
 npm test             # node --test，覆盖纯逻辑面（头行/分组划分、nav 回退链）
 npm run hosts:check  # 与 scripts/hosts.mjs 的枚举漂移检查（--write 修复）
 ```

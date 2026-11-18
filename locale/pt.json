@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Recolhimento de «Mais» da barra lateral",
+    "description": "Adiciona um comutador de seta quadrada na linha «Mais» para recolher as linhas de painéis adicionados da barra lateral em uma única linha; estado padrão e lista de exceções configuráveis."
+  }
+}
