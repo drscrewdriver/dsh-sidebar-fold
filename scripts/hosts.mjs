@@ -49,6 +49,11 @@ export const supportedHosts = Object.freeze([
   // 0.2.2 线：行被 `div._panelEntry` 包裹并自带避让宿主图钉控件，「隐藏到更多」
   // 就是宿主的取消固定（2026-11-14 读包内 src 取证，DOM 冒烟见 README 的宿主矩阵）。
   '0.2.2-rc.2', '0.2.2-rc.3',
+  // rc.4 / rc.5（2026-11-19 入列）：契约面与 rc.3 零 diff（gate blob
+  // 2e4ca5736a77、slot-catalog 617b47fe2f29、SESSION_FORMAT_VERSION=4 全同），
+  // rc.3→rc.4 的 packages/client 是纯版本号 bump，rc.5 只改
+  // ui-settings-web-search 的搜索页文案与 AUTO 项——侧栏 DOM 锚点零变更。
+  '0.2.2-rc.4', '0.2.2-rc.5',
 ])
 
 /** peerDependencies 共用的枚举串（精确枚举无暗坑，逐 rc 单列）。 */
@@ -59,7 +64,7 @@ export const peerRange = supportedHosts.join(' || ')
  * 起点推导（0.2.1-rc.3 —「更多」行首次出现的宿主），上限 `<0.3.0`，即 0.2.x 全窗口
  * 内的新 rc 不必发版即被接纳。宿主侧判定带 `includePrerelease: true`，区间口径安全。
  */
-export const enginesRange = `>=${supportedHosts[0]} <0.3.0`
+export const enginesRange = `>=${supportedHosts[0]} <0.3.0-0`
 
 /** 本地开发与矩阵默认宿主（devDependencies 若引入宿主包一律钉这里）。 */
 export const developmentHost = '0.2.1-rc.5'
