@@ -97,10 +97,20 @@ jobs:
         run: |
           set -uo pipefail
           REG=https://registry.npmjs.org
+          # 三种情形必须分开，否则「本包没有 dsh-* 线标签」会被当成读侧滞后白等 3 分钟：
+          #   A 查询失败/空      -> 读侧滞后，重试
+          #   B 有 dist-tags 但无 dsh-* -> 该包没有线标签，直接收工
+          #   C 有 dsh-*        -> 逐个 add
           for attempt in 1 2 3 4 5 6; do
-            TAGS=$(npm view "$PKG_NAME" dist-tags --json --registry "$REG" 2>/dev/null \
-              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(Object.keys(JSON.parse(s)).filter(t=>t.startsWith('dsh-')).join(' '))}catch{console.log('')}})")
-            if [ -n "${TAGS:-}" ]; then
+            RAW=$(npm view "$PKG_NAME" dist-tags --json --registry "$REG" 2>/dev/null)
+            if [ -n "${RAW:-}" ]; then
+              TAGS=$(printf '%s' "$RAW" \
+                | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(Object.keys(JSON.parse(s)).filter(t=>t.startsWith('dsh-')).join(' '))}catch{console.log('')}})")
+              if [ -z "${TAGS:-}" ]; then
+                echo "::notice::$PKG_NAME 没有 dsh-* 线标签，无需同步"
+                echo "synced=none" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               ok=1
               for t in $TAGS; do
                 npm dist-tag add "$PKG_NAME@$VERSION" "$t" --registry "$REG" || ok=0
