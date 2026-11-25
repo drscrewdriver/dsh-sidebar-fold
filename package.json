@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-fold",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Folds the sidebar's add-on panel rows under the shipped \"More\" row, and from host 0.2.2 on gives every row three states — show, fold, or hide in the host's own \"More\" list. The fold state persists per window, rows are read from the live sidebar, and the managed rows' icon + label can be aligned left, centre or right.",
   "type": "module",
   "main": "src/index.js",

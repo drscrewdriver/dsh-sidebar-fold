@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.15
+
+- 设置面新增 star 快车道行（单源 _tools/star-row 生成，10 语；GitHub 单色图标 + 仓库直达链接 + 一句工程话术，整行可点，无弹窗无打断）。
+- 附带 CI 修复：本包无线标签时直接收工，不再空等读侧滞后。
+
 ## 0.1.14
 
 - **CI 发版通道**：新增 `.github/workflows/release.yml`，打 tag 后由 GitHub Actions 依次完成

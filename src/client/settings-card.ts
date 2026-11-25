@@ -20,6 +20,7 @@
  */
 import { ATTR, CLS, type AlignMode } from './constants.ts'
 import { pickDictionary } from './locales.ts'
+import { mountStarRow } from './star-row-copy.ts'
 import {
   applyConfig,
   canMoveToMore,
@@ -395,6 +396,11 @@ function paint(): void {
     note.textContent = dict['settings.readonly']
     cardRoot.appendChild(note)
   }
+
+  // star 快车道行（单源 _tools/star-row，改副本无效；重渲染随 cardRoot 一起重建）
+  const starRow = mountStarRow()
+  starRow.setAttribute(ATTR.own, '')
+  cardRoot.appendChild(starRow)
 }
 
 /**
