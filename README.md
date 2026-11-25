@@ -103,6 +103,38 @@ npm run hosts:check  # enumeration drift vs scripts/hosts.mjs (--write to repair
 
 `prepack` runs build + verify, so a stale `lib/client.js` cannot be published.
 
+## Releases
+
+Releases are published by CI from a pushed tag; the local side only bumps and tags:
+
+```sh
+npm run ci                              # 1 the gate, run locally first
+# 2 bump package.json AND dsh.plugin.json to the same number
+# 3 add the new version section at the top of CHANGELOG.md
+git commit -am "release(0.1.14): ..."   # 4 version and changes in one commit
+git tag v0.1.14                         # 5 the tag points at that commit
+git push origin main v0.1.14            # 6 pushing the tag is the trigger
+```
+
+`.github/workflows/release.yml` then does the rest: version alignment (tag / package.json /
+`dsh.plugin.json`), dependency install, the gate, `npm pack --dry-run`, an idempotency guard
+(`npm view <pkg>@<ver>`), `npm publish`, `dsh-*` line-tag sync with read-side retry, and the
+GitHub Release carrying the `Latest` badge.
+
+Two properties worth knowing before you tag:
+
+- **Dry run first.** `gh workflow run release.yml -f tag=vX -f dry_run=true` runs every step
+  except publish / line-tag sync / Release, so a broken gate is found while the version is
+  still unpublished.
+- **Re-publishing is idempotent.** If the version already exists in the registry the job skips
+  the publish block and warns instead of failing, so re-dispatching the same tag is safe.
+  A line-tag sync failure only warns (publish has already succeeded) and the job summary
+  prints the local repair command.
+
+Release notes are built by `scripts/release-notes.mjs`: `RELEASE-NOTES-v<ver>.md` > the version
+section of `CHANGELOG.md` > the tag message, with a minimum body length so that an empty shell
+cannot be published.
+
 ## Supported hosts
 
 **DSH hosts `>=0.2.1-rc.3 <0.3.0`** (the "More" row first ships in 0.2.1-rc.3; newer 0.2.x rcs stay installable without a republish). Single source of truth: `scripts/hosts.mjs` — `engines.dsh` carries that bounded range, `peerDependencies` keep the per-rc enumeration (npm resolution never assumes `includePrerelease`), and `dsh.plugin.json` mirrors the range; all generated, never hand-edited.
