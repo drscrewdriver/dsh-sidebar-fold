@@ -30,7 +30,7 @@ import {
 import { pickDictionary } from './locales.ts'
 
 /** Minimal DOM surface we touch — keeps the tests free of a DOM dependency. */
-type ConfigLike = { defaultFolded: boolean; keepLabels: string[]; hideLabels: string[]; align: AlignMode }
+type ConfigLike = { defaultFolded: boolean; keepLabels: string[]; hideLabels: string[]; align: AlignMode; orderLabels: string[] }
 
 /**
  * Coerce a served alignment value into a mode the sheet has a rule for.
@@ -107,7 +107,7 @@ let mount: Mount | null = null
 /** Whether the group is folded; `null` = never decided in this window yet. */
 let folded: boolean | null = null
 /** Last config the fold was applied with (also read by the settings card). */
-let config: ConfigLike = { defaultFolded: false, keepLabels: [], hideLabels: [], align: 'start' }
+let config: ConfigLike = { defaultFolded: false, keepLabels: [], hideLabels: [], align: 'start', orderLabels: [] }
 /** Registered so `index.ts` can notify the fold after a settings write. */
 const configListeners = new Set<() => void>()
 
@@ -248,6 +248,48 @@ export function splitRows(
  * `_panelRow` button. Returns `null` when nothing matches — the caller then
  * leaves the sidebar exactly as shipped.
  */
+/**
+ * Move one label to another label's position in an ordered label list.
+ *
+ * Pure and case-sensitive by label identity: unknown labels leave the list
+ * untouched. Used both by the sidebar DnD and by the settings card so both
+ * surfaces compute the next order through one function.
+ */
+export function reorderLabels(labels: readonly string[], fromLabel: string, toLabel: string): string[] {
+  const from = labels.indexOf(fromLabel)
+  const to = labels.indexOf(toLabel)
+  if (from < 0 || to < 0 || from === to) return [...labels]
+  const next = [...labels]
+  const [moved] = next.splice(from, 1)
+  next.splice(to, 0, moved)
+  return next
+}
+
+/**
+ * Arrange live panel rows into the persisted label order.
+ *
+ * Rows whose label is absent from `orderLabels` are appended in their current
+ * DOM order, so a config written before a row existed never loses that row.
+ * The "More" header (aria-haspopup="menu", or the last row as fallback) is
+ * always forced to the end — it is the fold toggle and must stay put.
+ */
+export function orderedRows(rows: readonly ElementLike[], orderLabels: readonly string[]): ElementLike[] {
+  if (rows.length < 2) return [...rows]
+  const header = rows.find((row) => row.getAttribute('aria-haspopup') === 'menu') ?? rows[rows.length - 1]
+  const body = rows.filter((row) => row !== header)
+  const rank = (row: ElementLike): number => {
+    const label = labelOf(row)
+    const idx = orderLabels.indexOf(label)
+    return idx < 0 ? Number.MAX_SAFE_INTEGER : idx
+  }
+  // Stable sort: unknown labels keep their relative DOM order.
+  const sorted = body
+    .map((row, index) => ({ row, index, r: rank(row) }))
+    .sort((a, b) => (a.r - b.r) || (a.index - b.index))
+    .map((entry) => entry.row)
+  return [...sorted, header]
+}
+
 export function findPanelNav(root: QueryRoot): ElementLike | null {
   for (const label of PANELS_LABELS) {
     const byLabel = root.querySelector(`nav[aria-label="${label}"]`)
@@ -698,6 +740,102 @@ function openMoreList(): void {
   ;(anchor as HTMLElement).click()
 }
 
+// --- Row reorder (HTML5 DnD on the live sidebar rows) -----------------------
+
+/** Registered by index.ts / the settings card to learn when a sidebar drag commits a new order. */
+const orderListeners = new Set<(order: string[]) => void>()
+let dragSourceLabel: string | null = null
+
+/** Subscribe to order changes originating from the sidebar DOM. */
+export function subscribeOrder(listener: (order: string[]) => void): () => void {
+  orderListeners.add(listener)
+  return () => { orderListeners.delete(listener) }
+}
+
+/** Publish a new order from a sidebar drag and persist it in our config. */
+function notifyOrderChange(order: string[]): void {
+  config = { ...config, orderLabels: [...order] }
+  for (const listener of Array.from(orderListeners)) listener([...order])
+}
+
+/**
+ * Wire one panel row for HTML5 drag-and-drop. Idempotent: an `ATTR.dnd` mark
+ * prevents duplicate listeners across the many rescan passes. The "More" header
+ * is never wired (it stays the fold toggle). Drop commits the reordered label
+ * list; the settings card and index.ts both observe it via subscribeOrder.
+ */
+function bindRowDrag(row: ElementLike, isHeader: boolean): void {
+  if (isHeader || row.getAttribute(ATTR.dnd) !== null) return
+  const el = row as unknown as HTMLElement
+  el.setAttribute(ATTR.dnd, '')
+  el.setAttribute('draggable', 'true')
+  const label = labelOf(row)
+  if (label === '') return
+  el.addEventListener('dragstart', (e: any) => {
+    dragSourceLabel = label
+    el.classList?.add(CLS.rowDrag)
+    if (e?.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+  })
+  el.addEventListener('dragover', (e: any) => {
+    if (dragSourceLabel === null || dragSourceLabel === label) return
+    e?.preventDefault?.()
+    if (e?.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    el.classList?.add(CLS.rowDragOver)
+  })
+  el.addEventListener('dragleave', () => {
+    el.classList?.remove(CLS.rowDragOver)
+  })
+  el.addEventListener('drop', (e: any) => {
+    e?.preventDefault?.()
+    el.classList?.remove(CLS.rowDragOver)
+    if (dragSourceLabel === null || dragSourceLabel === label) return
+    const all = rowsOf(mount?.nav ?? (el.closest?.(SEL.panelList) as ElementLike))
+    if (all.length === 0) return
+    const labels = all.map(labelOf)
+    const next = reorderLabels(labels, dragSourceLabel, label)
+    dragSourceLabel = null
+    if (next.some((value) => value === '')) return
+    applyOrder(all, next)
+    notifyOrderChange(next)
+  })
+  el.addEventListener('dragend', () => {
+    dragSourceLabel = null
+    el.classList?.remove(CLS.rowDrag)
+    el.classList?.remove(CLS.rowDragOver)
+  })
+}
+
+/** Wire every live row for reordering (called on each apply pass, idempotent). */
+function bindRowDrags(rows: readonly ElementLike[]): void {
+  if (rows.length < 2) return
+  const header = rows.find((row) => row.getAttribute('aria-haspopup') === 'menu') ?? rows[rows.length - 1]
+  for (const row of rows) bindRowDrag(row, row === header)
+}
+
+/**
+ * Reorder the nav's rows in place to match the persisted label order.
+ *
+ * Mutation-safe: a row is moved only when its position actually differs from
+ * the target. The host owns these nodes (React), so we only re-parent them —
+ * never clone, never replace — and the "More" header stays at the end.
+ */
+function applyOrder(rows: readonly ElementLike[], orderLabels: readonly string[]): void {
+  if (orderLabels.length === 0) return
+  const target = orderedRows(rows, orderLabels)
+  if (target.length !== rows.length) return
+  const parent = rows[0]?.parentElement
+  if (parent == null) return
+  // Walk the target order and insert each row before its successor; insertBefore
+  // of a node already in place is a no-op in the DOM, so no mutation is emitted.
+  for (let i = target.length - 2; i >= 0; i--) {
+    const row = target[i]
+    const next = target[i + 1]
+    if ((row as any).nextElementSibling !== next) {
+      try { (parent as any).insertBefore(row, next) } catch { /* host may re-render */ }
+    }
+  }
+}
+
 /**
  * Write the fold marks. Only attributes we own are touched: no host class,
  * no host attribute, and never the anchor's `aria-expanded` (that one is the
@@ -709,6 +847,11 @@ function applyFold(): void {
   const plan = planFold(rows, config.keepLabels, config.hideLabels, currentFolded(), isRail(mount.nav))
   if (plan === null) return
   const { header } = plan
+  // Reorder the live rows to the persisted order before any fold marks are
+  // written. insertBefore is idempotent (only moves when the order differs) so
+  // the MutationObserver cannot self-trigger an endless rescan loop.
+  applyOrder(rows, config.orderLabels)
+  bindRowDrags(rows)
   if (header.getAttribute(ATTR.header) === null) header.setAttribute(ATTR.header, '')
   // Alignment is one nav-level mark with three rule sets behind it. Written on
   // every scan (and only when it differs) so a settings write repaints the row
@@ -828,6 +971,11 @@ function unmount(): void {
   for (const row of Array.from(nav.querySelectorAll?.(`[${ATTR.folded}]`) ?? []) as ElementLike[]) {
     row.removeAttribute(ATTR.folded)
   }
+  for (const row of Array.from(nav.querySelectorAll?.(`[${ATTR.dnd}]`) ?? []) as ElementLike[]) {
+    row.removeAttribute(ATTR.dnd)
+    row.removeAttribute('draggable')
+    ;(row as unknown as HTMLElement).classList?.remove(CLS.rowDrag, CLS.rowDragOver)
+  }
   mount = null
 }
 
@@ -892,6 +1040,11 @@ function sweep(): void {
   }
   for (const row of Array.from(document.querySelectorAll(`[${ATTR.folded}]`)) as ElementLike[]) {
     row.removeAttribute(ATTR.folded)
+  }
+  for (const row of Array.from(document.querySelectorAll(`[${ATTR.dnd}]`)) as ElementLike[]) {
+    row.removeAttribute(ATTR.dnd)
+    row.removeAttribute('draggable')
+    ;(row as unknown as HTMLElement).classList?.remove(CLS.rowDrag, CLS.rowDragOver)
   }
   mount = null
   // The pin bookkeeping belongs to one window's DOM; a remount starts from what
@@ -1014,6 +1167,7 @@ function copyConfig(cfg: ConfigLike): ConfigLike {
     // dropped on the way in instead of being retried on every scan.
     hideLabels: pruneHidden(cfg.hideLabels),
     align: normalizeAlign(cfg.align),
+    orderLabels: [...(cfg.orderLabels ?? [])],
   }
 }
 
@@ -1028,4 +1182,5 @@ export const BUILTIN_CONFIG: ConfigLike = {
   keepLabels: ['插件', 'Plugins'],
   hideLabels: [],
   align: 'start',
+  orderLabels: [],
 }

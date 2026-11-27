@@ -47,6 +47,16 @@ export const DEFAULT_KEEP_LABELS = ['插件', 'Plugins']
 export const DEFAULT_HIDE_LABELS = []
 
 /**
+ * Row ordering, as accessible names in the sidebar's column order.
+ *
+ * Empty means "keep the host's shipped DOM order". Persisted through the same
+ * volatile Config channel as keepLabels/hideLabels so the settings card and the
+ * sidebar DOM share one source of truth. The "More" header is excluded — it is
+ * always pinned to the end by orderedRows().
+ */
+export const DEFAULT_ORDER_LABELS = []
+
+/**
  * Row-content alignment for the managed area: `start` | `center` | `end`.
  *
  * A plain string, not a closed union: schemastery's union builder is not the same
@@ -89,6 +99,8 @@ export const Config = z.object({
   keepLabels: live(z.array(z.string()).default(DEFAULT_KEEP_LABELS)),
   // Rows the host owns in its "More" list (the card's third state).
   hideLabels: live(z.array(z.string()).default(DEFAULT_HIDE_LABELS)),
+  // Row ordering (accessible names in column order; [] = shipped DOM order).
+  orderLabels: live(z.array(z.string()).default(DEFAULT_ORDER_LABELS)),
   // Icon + label alignment inside each managed row (`start` | `center` | `end`).
   align: live(z.string().default(DEFAULT_ALIGN)),
 })

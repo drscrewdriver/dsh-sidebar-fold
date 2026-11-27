@@ -12,7 +12,7 @@
  *    pending and the plugin silently inert.
  */
 import { PKG_NAME } from './constants.ts'
-import { applyConfig, BUILTIN_CONFIG, installFold, normalizeAlign, rescan } from './fold.ts'
+import { applyConfig, BUILTIN_CONFIG, effectiveConfig, installFold, normalizeAlign, rescan, subscribeOrder } from './fold.ts'
 import { createSettingsRow, adoptPluginNavigation } from './menu-entry.ts'
 import { createConfigCard, onFallback, onScope, type SettingsScopeLike } from './settings-card.ts'
 
@@ -47,6 +47,12 @@ function safe(tag: string, fn: () => void): void {
 /** Adopt a served snapshot, falling back to the built-ins when it says nothing. */
 function adopt(scope: SettingsScopeLike): void {
   onScope(scope)
+  // A sidebar drag publishes the new order here; commit it through the same
+  // scoped form so the card and the sidebar share one persisted source.
+  subscribeOrder((order) => {
+    applyConfig({ ...effectiveConfig(), orderLabels: order })
+    void scope.set('orderLabels', order)
+  })
   const push = (): void => {
     const snap = scope.getSnapshot()
     const value = snap.value
@@ -59,6 +65,8 @@ function adopt(scope: SettingsScopeLike): void {
       // Alignment is validated by `normalizeAlign` here so everything downstream
       // (fold marks, card radios) only ever sees one of the three known modes.
       align: normalizeAlign(typeof value?.align === 'string' ? value.align : BUILTIN_CONFIG.align),
+      // Row order: absent on older hosts means keep the shipped DOM order.
+      orderLabels: Array.isArray(value?.orderLabels) ? value.orderLabels : BUILTIN_CONFIG.orderLabels,
     }
     onFallback(next)
     applyConfig(next)

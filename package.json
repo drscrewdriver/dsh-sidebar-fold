@@ -1,6 +1,6 @@
 {
   "name": "dsh-sidebar-fold",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Folds the sidebar's add-on panel rows under the shipped \"More\" row, and from host 0.2.2 on gives every row three states — show, fold, or hide in the host's own \"More\" list. The fold state persists per window, rows are read from the live sidebar, and the managed rows' icon + label can be aligned left, centre or right.",
   "type": "module",
   "main": "src/index.js",
@@ -37,13 +37,13 @@
   "scripts": {
     "lint": "node scripts/lint.mjs",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --experimental-strip-types --no-warnings --test tests/fold.test.ts tests/fold-plan.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test tests/fold.test.ts tests/fold-plan.test.ts tests/order.test.ts",
     "test:coverage": "node --experimental-strip-types --no-warnings --experimental-test-coverage --test tests/fold.test.ts tests/fold-plan.test.ts",
     "build": "node scripts/build-client.mjs",
     "verify": "node scripts/verify.mjs",
     "gen:locale": "node scripts/gen-locale-meta.mjs",
     "ci": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify",
-    "prepack": "npm run lint && npm run build && npm run verify",
+    "prepack": "npm run lint && npm run build && node scripts/check-surface-classes.mjs --prefix dshsf && npm run verify",
     "prepublishOnly": "npm run lint && npm run build && npm run verify",
     "hosts:check": "node scripts/sync-hosts.mjs",
     "hosts:write": "node scripts/sync-hosts.mjs --write"

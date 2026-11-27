@@ -29,6 +29,7 @@ import {
   hostHasPin,
   isFixedLabel,
   normalizeAlign,
+  reorderLabels,
   roster,
   subscribeRoster,
   type RowState,
@@ -41,7 +42,7 @@ const react: any = require('react')
 /** One settings snapshot as the host's scoped form reports it. */
 export interface ConfigSnapshot {
   status: 'loading' | 'ready' | 'unavailable'
-  value: { defaultFolded?: boolean; keepLabels?: string[]; hideLabels?: string[]; align?: string } | undefined
+  value: { defaultFolded?: boolean; keepLabels?: string[]; hideLabels?: string[]; align?: string; orderLabels?: string[] } | undefined
   revision: number | undefined
   writable: boolean
 }
@@ -57,11 +58,12 @@ export interface SettingsScopeLike {
 const scopeRef: { scope: SettingsScopeLike | undefined } = { scope: undefined }
 
 /** Fallback shown when no host form is served (≤0.1.6, or an unserved namespace). */
-let fallback: { defaultFolded: boolean; keepLabels: string[]; hideLabels: string[]; align: AlignMode } = {
+let fallback: { defaultFolded: boolean; keepLabels: string[]; hideLabels: string[]; align: AlignMode; orderLabels: string[] } = {
   defaultFolded: false,
   keepLabels: ['插件', 'Plugins'],
   hideLabels: [],
   align: 'start',
+  orderLabels: [],
 }
 
 /** The card body node, created once and re-used by every mount. */
@@ -83,6 +85,7 @@ function currentValues(): {
   keepLabels: string[]
   hideLabels: string[]
   align: AlignMode
+  orderLabels: string[]
   writable: boolean
   status: ConfigSnapshot['status']
 } {
@@ -94,6 +97,7 @@ function currentValues(): {
       keepLabels: snap.value?.keepLabels ?? fallback.keepLabels,
       hideLabels: snap.value?.hideLabels ?? fallback.hideLabels,
       align: normalizeAlign(snap.value?.align ?? fallback.align),
+      orderLabels: Array.isArray(snap.value?.orderLabels) ? snap.value.orderLabels : fallback.orderLabels,
       writable: snap.writable && snap.status === 'ready',
       status: snap.status,
     }
@@ -103,6 +107,7 @@ function currentValues(): {
     keepLabels: fallback.keepLabels,
     hideLabels: fallback.hideLabels,
     align: normalizeAlign(fallback.align),
+    orderLabels: fallback.orderLabels,
     writable: false,
     status: 'unavailable',
   }
@@ -272,6 +277,79 @@ function writeRowState(rows: ReturnType<typeof roster>, label: string, next: Row
   commit({ keepLabels: lists.keepLabels, hideLabels: lists.hideLabels })
 }
 
+/**
+ * Attach a drag handle to a settings row so the visible list can be reordered.
+ *
+ * The row itself is the drag source and drop target; both surfaces (sidebar and
+ * card) compute the next order via reorderLabels and commit through write().
+ */
+function makeDraggableRow(row: HTMLElement, label: string, rows: ReturnType<typeof roster>): HTMLElement {
+  row.setAttribute('draggable', 'true')
+  row.classList.add(CLS.rowDrag)
+  let source = ''
+  row.addEventListener('dragstart', (e: any) => {
+    source = label
+    if (e?.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+  })
+  row.addEventListener('dragover', (e: any) => {
+    if (source === '' || source === label) return
+    e?.preventDefault?.()
+    if (e?.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    row.classList.add(CLS.rowDragOver)
+  })
+  row.addEventListener('dragleave', () => row.classList.remove(CLS.rowDragOver))
+  row.addEventListener('drop', (e: any) => {
+    e?.preventDefault?.()
+    row.classList.remove(CLS.rowDragOver)
+    if (source === '' || source === label) return
+    const labels = rows.map((entry) => entry.label)
+    const next = reorderLabels(labels, source, label)
+    source = ''
+    // Local optimistic reorder: repaint the roster in the new order first, then
+    // persist it through the same commit() path as the three-state writes.
+    const rank = new Map(next.map((value, index) => [value, index]))
+    const reordered = [...rows].sort((a, b) => (rank.get(a.label) ?? 0) - (rank.get(b.label) ?? 0))
+    for (const entry of reordered) {
+      // Build a fresh row for each entry in the new order.
+      cardRoot?.appendChild(buildEntry(entry, reordered))
+    }
+    commit({ orderLabels: next })
+  })
+  row.addEventListener('dragend', () => {
+    source = ''
+    row.classList.remove(CLS.rowDragOver)
+  })
+  return row
+}
+
+/** Build one three-state entry row (shared by paint and the DnD repaint). */
+function buildEntry(entry: ReturnType<typeof roster>[number], rows: ReturnType<typeof roster>): HTMLElement {
+  const canHide = hostHasPin()
+  const movable = canMoveToMore(entry.label, canHide)
+  const hintText = movable
+    ? pickDictionary(document.documentElement.lang ?? '')['settings.rowHint']
+    : isFixedLabel(entry.label)
+      ? pickDictionary(document.documentElement.lang ?? '')['settings.moreFixed']
+      : pickDictionary(document.documentElement.lang ?? '')['settings.moreUnavailable']
+  const dict = pickDictionary(document.documentElement.lang ?? '')
+  const built = buildRow(
+    entry.label,
+    hintText,
+    segmentedControl(
+      `row:${entry.label}`,
+      entry.state,
+      [
+        { value: 'always', label: dict['settings.rowAlways'] },
+        { value: 'foldable', label: dict['settings.rowFold'] },
+        { value: 'more', label: dict['settings.rowMore'], unavailable: !movable },
+      ],
+      !currentValues().writable,
+      (next) => writeRowState(rows, entry.label, next as RowState),
+    ),
+  )
+  return makeDraggableRow(built, entry.label, rows)
+}
+
 /** Paint (or repaint) the card body from the current values and the live roster. */
 function paint(): void {
   if (cardRoot === null) return
@@ -319,6 +397,12 @@ function paint(): void {
   scopeTitle.textContent = dict['settings.rows']
   cardRoot.appendChild(scopeTitle)
 
+  const dragHint = document.createElement('span')
+  dragHint.className = CLS.hint
+  dragHint.setAttribute(ATTR.own, '')
+  dragHint.textContent = dict['settings.rowDrag'] + ' — ' + dict['settings.rowDragHint']
+  cardRoot.appendChild(dragHint)
+
   const hint = document.createElement('span')
   hint.className = CLS.hint
   hint.setAttribute(ATTR.own, '')
@@ -336,31 +420,8 @@ function paint(): void {
   // Two gates on the third state, per row: this host must ship the pin mechanism
   // at all (0.2.2 on), and the row must not be the host's fixed panel — the host
   // never unpins that one, so offering it would be a promise it silently refuses.
-  const canHide = hostHasPin()
   for (const entry of rows) {
-    const movable = canMoveToMore(entry.label, canHide)
-    const hintText = movable
-      ? dict['settings.rowHint']
-      : isFixedLabel(entry.label) ? dict['settings.moreFixed'] : dict['settings.moreUnavailable']
-    cardRoot.appendChild(
-      buildRow(
-        entry.label,
-        hintText,
-        segmentedControl(
-          `row:${entry.label}`,
-          entry.state,
-          [
-            { value: 'always', label: dict['settings.rowAlways'] },
-            { value: 'foldable', label: dict['settings.rowFold'] },
-            { value: 'more', label: dict['settings.rowMore'], unavailable: !movable },
-          ],
-          !values.writable,
-          (next) => {
-            writeRowState(rows, entry.label, next as RowState)
-          },
-        ),
-      ),
-    )
+    cardRoot.appendChild(buildEntry(entry, rows))
   }
 
   // ④ write outcome. The host owns persistence; a refused write leaves the card
@@ -422,6 +483,7 @@ export function onFallback(next: typeof fallback): void {
     keepLabels: [...next.keepLabels],
     hideLabels: [...next.hideLabels],
     align: normalizeAlign(next.align),
+    orderLabels: [...(next.orderLabels ?? [])],
   }
   paint()
 }
@@ -454,4 +516,4 @@ export function createConfigCard(): () => unknown {
 }
 
 /** Exported for the guard test: the card writes no free-text label list. */
-export const CARD_WRITES: readonly string[] = ['defaultFolded', 'align', 'keepLabels', 'hideLabels']
+export const CARD_WRITES: readonly string[] = ['defaultFolded', 'align', 'keepLabels', 'hideLabels', 'orderLabels']

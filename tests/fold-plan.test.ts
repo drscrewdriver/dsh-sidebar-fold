@@ -10,7 +10,7 @@
  */
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { deriveLists, planFold, rosterFrom, type RowLike } from '../src/client/fold.ts'
+import { deriveLists, orderedRows, planFold, reorderLabels, rosterFrom, type RowLike } from '../src/client/fold.ts'
 
 /** A panel-row stub carrying only what the pure seams read. */
 function row(label: string, options: { haspopup?: string } = {}): RowLike {
@@ -172,3 +172,37 @@ describe('deriveLists', () => {
     assert.deepEqual(deriveLists(roster, '不存在的行', 'more'), { keepLabels: ['插件'], hideLabels: [] })
   })
 })
+
+describe('reorderLabels', () => {
+  it('moves a label to another label position', () => {
+    assert.deepEqual(reorderLabels(['A', 'B', 'C'], 'C', 'A'), ['C', 'A', 'B'])
+    assert.deepEqual(reorderLabels(['A', 'B', 'C'], 'A', 'C'), ['B', 'C', 'A'])
+  })
+  it('returns a copy when labels are unknown or identical', () => {
+    assert.deepEqual(reorderLabels(['A', 'B'], 'X', 'A'), ['A', 'B'])
+    assert.deepEqual(reorderLabels(['A', 'B'], 'A', 'B'), ['B', 'A'])
+    assert.deepEqual(reorderLabels(['A', 'A'], 'A', 'A'), ['A', 'A'])
+  })
+})
+
+describe('orderedRows', () => {
+  it('places known labels in stored order and appends unknown rows in DOM order', () => {
+    const list = rows('插件', '自动化任务', '记忆星海', '更多')
+    const [a, b, c, more] = list
+    const out = orderedRows(list, ['记忆星海', '插件'])
+    assert.deepEqual(out, [c, a, b, more])
+  })
+  it('always pins the "More" header to the end', () => {
+    const list = rows('插件', '更多', '自动化任务')
+    // header found by aria-haspopup fallback = last row here ('自动化任务');
+    // give it the marker explicitly to model the shipped More row.
+    const headerRow = row('更多', { haspopup: 'menu' })
+    const withHeader = [headerRow, ...list]
+    const out = orderedRows(withHeader, [])
+    assert.equal(out[out.length - 1], headerRow)
+  })
+  it('leaves a short list unchanged', () => {
+    const one = rows('更多')
+    assert.deepEqual(orderedRows(one, ['x']), one)
+  })
+});

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.16 (2026-11-27)
+
+**侧边栏入口行排序：除「更多」外全部可拖，顺序持久化到 Config。**
+
+- `orderLabels`（volatile Config 字段，缺省 `[]` = 宿主 DOM 原序）：侧边栏行内 DnD 与设置卡片 DnD 两面共享同一来源与写路径。
+- 新增纯函数 `reorderLabels` / `orderedRows`；`applyFold` 用幂等 `insertBefore` 重排，抗 MutationObserver 自激；「更多」header 恒固定末尾，折叠开关不变。
+- 设置卡入口行加拖柄，drop 后 `commit({orderLabels})`；`index.ts` 把侧栏拖动经 `subscribeOrder` 桥接回同一 scope 落盘。
+- 10 语字典 + locale 元数据同步新增 `settings.rowDrag` / `rowDragHint`；新增 `scripts/check-surface-classes.mjs` 并接进 prepack。
+
 ## 0.1.15
 
 - 设置面新增 star 快车道行（单源 _tools/star-row 生成，10 语；GitHub 单色图标 + 仓库直达链接 + 一句工程话术，整行可点，无弹窗无打断）。

@@ -35,6 +35,9 @@ export const CLS = Object.freeze({
   menuRow: 'dshsf-menu-row',
   menuText: 'dshsf-menu-text',
   menuIcon: 'dshsf-menu-icon',
+  /** Transient highlight on the row being dragged / targeted. */
+  rowDrag: 'dshsf-row-drag',
+  rowDragOver: 'dshsf-row-drag-over',
 })
 
 /**
@@ -65,6 +68,8 @@ export const ATTR = Object.freeze({
   align: 'data-dshsf-align',
   /** On the toggle: the folded group holds the panel the user is looking at. */
   activeInside: 'data-dshsf-active-inside',
+  /** On a panel row we have wired for HTML5 drag-and-drop reordering. */
+  dnd: 'data-dshsf-dnd',
 })
 
 /** Selector fragments (hash-tolerant). */
@@ -315,5 +320,8 @@ export const SHEET = [
     'outline-offset:-2px',
   ]),
   rule(`.${CLS.menuText}`, ['overflow:hidden', 'text-overflow:ellipsis', 'white-space:nowrap']),
+  // Row drag feedback — opacity on the source, a token-tinted outline on the target.
+  rule(`.${CLS.rowDrag}`, ['opacity:.45']),
+  rule(`.${CLS.rowDragOver}`, ['outline:2px solid var(--dsw-alias-state-business-primary,#4d6bfe)', 'outline-offset:-2px']),
   rule(`.${CLS.menuIcon}`, ['flex:none', 'display:block']),
 ].join('')
