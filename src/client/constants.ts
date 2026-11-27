@@ -332,4 +332,11 @@ export const SHEET = [
   rule(`.${CLS.rowHandle}`, ['cursor:grab', '-webkit-user-select:none', 'user-select:none']),
   rule(`.${CLS.rowHandle}:active`, ['cursor:grabbing']),
   rule(`.${CLS.menuIcon}`, ['flex:none', 'display:block']),
+  // Configuration card last on the detail page. The host hard-codes
+  // README -> config -> components -> version -> source, which buries the card
+  // between the README and the component list; the sections container is
+  // display:flex; flex-direction:column (rc.5 PluginManagerPage.module.css),
+  // so `order` re-sorts it without touching a host node. The `section` prefix
+  // keeps the row-detail container (a div[data-plugin-config]) out of scope.
+  rule(`section[data-plugin-config]`, ['order:99']),
 ].join('')
