@@ -389,7 +389,9 @@ let rosterKey = ''
  */
 export function roster(): RowInfo[] {
   const nav = findPanelNav(document as unknown as QueryRoot)
-  const rows = nav === null ? [] : rosterFrom(rowsOf(nav), config.keepLabels, config.hideLabels)
+  const rows = nav === null
+    ? []
+    : rosterFrom(orderedRows(rowsOf(nav), config.orderLabels), config.keepLabels, config.hideLabels)
   const seen = new Set(rows.map((row) => row.label.toLowerCase()))
   for (const entry of moreMenuRows()) {
     if (seen.has(entry.label.toLowerCase())) continue
@@ -759,49 +761,55 @@ function notifyOrderChange(order: string[]): void {
 }
 
 /**
- * Wire one panel row for HTML5 drag-and-drop. Idempotent: an `ATTR.dnd` mark
- * prevents duplicate listeners across the many rescan passes. The "More" header
- * is never wired (it stays the fold toggle). Drop commits the reordered label
- * list; the settings card and index.ts both observe it via subscribeOrder.
+ * Wire one panel row's **wrapper** for HTML5 drag-and-drop.
+ *
+ * Idempotent: an `ATTR.dnd` mark prevents duplicate listeners across the many
+ * rescan passes. The wrapper (not the button) is the drag surface because it is
+ * the visible row *and* the flex item `applyOrder` ranks — otherwise dropping on
+ * the row's pin gutter would miss the target. The "More" header is never wired:
+ * it stays the fold toggle and stays last.
  */
 function bindRowDrag(row: ElementLike, isHeader: boolean): void {
-  if (isHeader || row.getAttribute(ATTR.dnd) !== null) return
-  const el = row as unknown as HTMLElement
-  el.setAttribute(ATTR.dnd, '')
-  el.setAttribute('draggable', 'true')
+  if (isHeader) return
   const label = labelOf(row)
   if (label === '') return
+  const el = foldTarget(row) as unknown as HTMLElement
+  if (el.getAttribute(ATTR.dnd) !== null) return
+  el.setAttribute(ATTR.dnd, '')
+  el.setAttribute('draggable', 'true')
   el.addEventListener('dragstart', (e: any) => {
     dragSourceLabel = label
-    el.classList?.add(CLS.rowDrag)
+    el.classList.add(CLS.rowDrag)
     if (e?.dataTransfer) e.dataTransfer.effectAllowed = 'move'
   })
   el.addEventListener('dragover', (e: any) => {
     if (dragSourceLabel === null || dragSourceLabel === label) return
     e?.preventDefault?.()
     if (e?.dataTransfer) e.dataTransfer.dropEffect = 'move'
-    el.classList?.add(CLS.rowDragOver)
+    el.classList.add(CLS.rowDragOver)
   })
   el.addEventListener('dragleave', () => {
-    el.classList?.remove(CLS.rowDragOver)
+    el.classList.remove(CLS.rowDragOver)
   })
   el.addEventListener('drop', (e: any) => {
     e?.preventDefault?.()
-    el.classList?.remove(CLS.rowDragOver)
-    if (dragSourceLabel === null || dragSourceLabel === label) return
+    el.classList.remove(CLS.rowDragOver)
+    const source = dragSourceLabel
+    dragSourceLabel = null
+    if (source === null || source === label) return
     const all = rowsOf(mount?.nav ?? (el.closest?.(SEL.panelList) as ElementLike))
     if (all.length === 0) return
-    const labels = all.map(labelOf)
-    const next = reorderLabels(labels, dragSourceLabel, label)
-    dragSourceLabel = null
-    if (next.some((value) => value === '')) return
+    // Order the reorderable rows only: the "More" header is not a rank, it is
+    // pinned last by orderedRows, and persisting its label would just be noise.
+    const header = all.find((row) => row.getAttribute('aria-haspopup') === 'menu') ?? all[all.length - 1]
+    const next = reorderLabels(all.filter((row) => row !== header).map(labelOf), source, label)
     applyOrder(all, next)
     notifyOrderChange(next)
   })
   el.addEventListener('dragend', () => {
     dragSourceLabel = null
-    el.classList?.remove(CLS.rowDrag)
-    el.classList?.remove(CLS.rowDragOver)
+    el.classList.remove(CLS.rowDrag)
+    el.classList.remove(CLS.rowDragOver)
   })
 }
 
@@ -813,26 +821,67 @@ function bindRowDrags(rows: readonly ElementLike[]): void {
 }
 
 /**
- * Reorder the nav's rows in place to match the persisted label order.
+ * Reorder the nav's rows to match the persisted label order.
  *
- * Mutation-safe: a row is moved only when its position actually differs from
- * the target. The host owns these nodes (React), so we only re-parent them —
- * never clone, never replace — and the "More" header stays at the end.
+ * Written as the flex `order` property on each row's **wrapper**, never by moving
+ * nodes. Two measured facts force that choice:
+ *
+ *  - from the 0.2.2 line on every row button sits in its own `div._panelEntry`
+ *    (`SidebarRoot.tsx:78`), so the buttons are *not* siblings. The first cut
+ *    moved them with `parent.insertBefore(row, next)`, where `next` belonged to
+ *    another parent — the DOM throws `NotFoundError`, our `try` swallowed it, and
+ *    a drop therefore highlighted the target and changed nothing (the bug this
+ *    replaces);
+ *  - the nodes are React's, so re-parenting them is a fight we lose on the next
+ *    render. `order` is ours alone to write, it survives re-renders (the host sets
+ *    no `style` on these wrappers), and removing the declarations undoes it.
+ *
+ * `.panelList` is `display:flex; flex-direction:column` (`SidebarRoot.module.css`),
+ * so `order` reorders the column without touching document order — which is also
+ * why the observer (attributes filtered to `class`) cannot see these writes.
+ *
+ * The "More" header is ordered last by {@link orderedRows}, so it stays the fold
+ * toggle no matter what the user drags.
+ * @param rows - the nav's panel rows, in document order.
+ * @param orderLabels - persisted label order; an empty list clears every rank.
  */
-function applyOrder(rows: readonly ElementLike[], orderLabels: readonly string[]): void {
-  if (orderLabels.length === 0) return
-  const target = orderedRows(rows, orderLabels)
-  if (target.length !== rows.length) return
-  const parent = rows[0]?.parentElement
-  if (parent == null) return
-  // Walk the target order and insert each row before its successor; insertBefore
-  // of a node already in place is a no-op in the DOM, so no mutation is emitted.
-  for (let i = target.length - 2; i >= 0; i--) {
-    const row = target[i]
-    const next = target[i + 1]
-    if ((row as any).nextElementSibling !== next) {
-      try { (parent as any).insertBefore(row, next) } catch { /* host may re-render */ }
+export function applyOrder(rows: readonly ElementLike[], orderLabels: readonly string[]): void {
+  if (rows.length < 2) return
+  const entries: ElementLike[] = []
+  for (const row of rows) {
+    const entry = foldTarget(row)
+    if (!entries.includes(entry)) entries.push(entry)
+  }
+  const wanted = new Map<ElementLike, number>()
+  if (orderLabels.length > 0) {
+    orderedRows(rows, orderLabels).forEach((row, index) => {
+      wanted.set(foldTarget(row), index + 1)
+    })
+  }
+  for (const entry of entries) {
+    const value = wanted.get(entry)
+    if (value === undefined) {
+      if (entry.getAttribute(ATTR.order) === null) continue
+      entry.removeAttribute(ATTR.order)
+      const el = entry as unknown as HTMLElement
+      if (el.style != null) el.style.order = ''
+      continue
     }
+    const text = String(value)
+    // Write only on change: a no-op write is a mutation nobody asked for.
+    if (entry.getAttribute(ATTR.order) === text) continue
+    entry.setAttribute(ATTR.order, text)
+    const el = entry as unknown as HTMLElement
+    if (el.style != null) el.style.order = text
+  }
+}
+
+/** Undo every inline rank this plugin wrote (dispose / HMR sweep). */
+function clearOrder(): void {
+  for (const node of Array.from(document.querySelectorAll(`[${ATTR.order}]`)) as ElementLike[]) {
+    node.removeAttribute(ATTR.order)
+    const el = node as unknown as HTMLElement
+    if (el.style != null) el.style.order = ''
   }
 }
 
@@ -848,8 +897,8 @@ function applyFold(): void {
   if (plan === null) return
   const { header } = plan
   // Reorder the live rows to the persisted order before any fold marks are
-  // written. insertBefore is idempotent (only moves when the order differs) so
-  // the MutationObserver cannot self-trigger an endless rescan loop.
+  // written. Ranks are inline `order` values written only when they change, and
+  // the observer watches `class` alone, so a scan cannot trigger itself.
   applyOrder(rows, config.orderLabels)
   bindRowDrags(rows)
   if (header.getAttribute(ATTR.header) === null) header.setAttribute(ATTR.header, '')
@@ -859,8 +908,9 @@ function applyFold(): void {
   const align = normalizeAlign(config.align)
   if (mount.nav.getAttribute(ATTR.align) !== align) mount.nav.setAttribute(ATTR.align, align)
 
-  // The settings card renders whatever is on screen right now; keep it in sync.
-  notifyRoster(rosterFrom(rows, config.keepLabels, config.hideLabels))
+  // The settings card renders whatever is on screen right now; keep it in sync —
+  // and in the order the column shows, so a drag reads the same on both surfaces.
+  notifyRoster(rosterFrom(orderedRows(rows, config.orderLabels), config.keepLabels, config.hideLabels))
 
   // Nothing to fold (every sibling is kept): say so on the control instead of
   // flipping the arrow over an unchanged list — the first report of "arrow moves
@@ -976,6 +1026,7 @@ function unmount(): void {
     row.removeAttribute('draggable')
     ;(row as unknown as HTMLElement).classList?.remove(CLS.rowDrag, CLS.rowDragOver)
   }
+  clearOrder()
   mount = null
 }
 
@@ -1046,6 +1097,7 @@ function sweep(): void {
     row.removeAttribute('draggable')
     ;(row as unknown as HTMLElement).classList?.remove(CLS.rowDrag, CLS.rowDragOver)
   }
+  clearOrder()
   mount = null
   // The pin bookkeeping belongs to one window's DOM; a remount starts from what
   // the host shows now, never from a count that may no longer refer to it.

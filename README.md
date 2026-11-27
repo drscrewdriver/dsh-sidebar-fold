@@ -29,6 +29,11 @@ folds those add-on rows away so only the “More” line remains; the arrow flip
   in the “More” menu, from where the host's own pin control brings it back; the plugin
   reconciles both sides on boot, on a config write and on every sidebar repaint — including
   after a reload, where the host's in-memory pin table comes back empty.
+- **Reorderable entries** — drag any add-on row onto another row in the sidebar, or drag the
+  handle inside the settings card, to change the column order. The order is stored in `Config`
+  (`orderLabels`) and applied as CSS `order` on the host's row wrappers — no host node is moved,
+  so a host repaint cannot undo it; the “More” row stays last and the fold toggle keeps working.
+  Both surfaces share one order, and clearing the config restores the host's own DOM order.
 - **Configurable** — default state, the three-state row controls and the row alignment live
   in the plugin's settings card (host `Config`, `.volatile()`, applied without a restart).
 - **Rail-safe** — when the sidebar is collapsed to the 36 px icon rail the toggle is
@@ -77,6 +82,7 @@ path; a host without that service falls back to selecting the Plugins panel.
 |---|---|---|
 | Folded by default | State a window starts in when it has no local record | off |
 | Row alignment | Three-way segmented control (left / centre / right) for the managed rows; the “More” row follows the same setting | left |
+| Entry order | Drag a row onto another row (in the sidebar or in this card) to reorder; stored in the config, kept across reloads and repaints, the “More” row stays last | host DOM order |
 | Entries (one per row) | **Show** = always visible; **Fold** = may be folded (default); **Hide in More** = move it into the host's “More” menu | Fold |
 
 The row list is read from the DOM at open time, so a panel installed later shows up

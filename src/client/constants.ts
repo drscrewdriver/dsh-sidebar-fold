@@ -38,6 +38,8 @@ export const CLS = Object.freeze({
   /** Transient highlight on the row being dragged / targeted. */
   rowDrag: 'dshsf-row-drag',
   rowDragOver: 'dshsf-row-drag-over',
+  /** The settings-card handle a reorder drag is started from. */
+  rowHandle: 'dshsf-row-handle',
 })
 
 /**
@@ -70,6 +72,8 @@ export const ATTR = Object.freeze({
   activeInside: 'data-dshsf-active-inside',
   /** On a panel row we have wired for HTML5 drag-and-drop reordering. */
   dnd: 'data-dshsf-dnd',
+  /** On a row wrapper carrying the flex `order` we wrote for a persisted rank. */
+  order: 'data-dshsf-order',
 })
 
 /** Selector fragments (hash-tolerant). */
@@ -323,5 +327,9 @@ export const SHEET = [
   // Row drag feedback — opacity on the source, a token-tinted outline on the target.
   rule(`.${CLS.rowDrag}`, ['opacity:.45']),
   rule(`.${CLS.rowDragOver}`, ['outline:2px solid var(--dsw-alias-state-business-primary,#4d6bfe)', 'outline-offset:-2px']),
+  // The settings card's drag handle: a grab cursor is the only honest affordance
+  // (dimming the whole row, as the first cut did, reads as “disabled”).
+  rule(`.${CLS.rowHandle}`, ['cursor:grab', '-webkit-user-select:none', 'user-select:none']),
+  rule(`.${CLS.rowHandle}:active`, ['cursor:grabbing']),
   rule(`.${CLS.menuIcon}`, ['flex:none', 'display:block']),
 ].join('')

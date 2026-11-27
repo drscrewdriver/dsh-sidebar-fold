@@ -281,14 +281,23 @@ function writeRowState(rows: ReturnType<typeof roster>, label: string, next: Row
  * Attach a drag handle to a settings row so the visible list can be reordered.
  *
  * The row itself is the drag source and drop target; both surfaces (sidebar and
- * card) compute the next order via reorderLabels and commit through write().
+ * card) compute the next order via reorderLabels and commit through commit().
+ *
+ * The drop commits in one direction only — the sidebar is the ordering
+ * authority: `applyConfig` ranks the live rows, `paint()` re-reads the roster
+ * (which now reports the new order), and only then does the write go out. The
+ * first cut rebuilt the list by appending fresh rows to the card root, which
+ * left the originals in place (a duplicated list that read as "nothing changed").
  */
 function makeDraggableRow(row: HTMLElement, label: string, rows: ReturnType<typeof roster>): HTMLElement {
   row.setAttribute('draggable', 'true')
-  row.classList.add(CLS.rowDrag)
+  // A grab cursor, not the drag *feedback* class: dimming the row permanently
+  // made every settings row look disabled.
+  row.classList.add(CLS.rowHandle)
   let source = ''
   row.addEventListener('dragstart', (e: any) => {
     source = label
+    row.classList.add(CLS.rowDrag)
     if (e?.dataTransfer) e.dataTransfer.effectAllowed = 'move'
   })
   row.addEventListener('dragover', (e: any) => {
@@ -301,22 +310,17 @@ function makeDraggableRow(row: HTMLElement, label: string, rows: ReturnType<type
   row.addEventListener('drop', (e: any) => {
     e?.preventDefault?.()
     row.classList.remove(CLS.rowDragOver)
-    if (source === '' || source === label) return
-    const labels = rows.map((entry) => entry.label)
-    const next = reorderLabels(labels, source, label)
+    const from = source
     source = ''
-    // Local optimistic reorder: repaint the roster in the new order first, then
-    // persist it through the same commit() path as the three-state writes.
-    const rank = new Map(next.map((value, index) => [value, index]))
-    const reordered = [...rows].sort((a, b) => (rank.get(a.label) ?? 0) - (rank.get(b.label) ?? 0))
-    for (const entry of reordered) {
-      // Build a fresh row for each entry in the new order.
-      cardRoot?.appendChild(buildEntry(entry, reordered))
-    }
+    if (from === '' || from === label) return
+    const next = reorderLabels(rows.map((entry) => entry.label), from, label)
+    applyConfig({ ...effectiveConfig(), orderLabels: next })
+    paint()
     commit({ orderLabels: next })
   })
   row.addEventListener('dragend', () => {
     source = ''
+    row.classList.remove(CLS.rowDrag)
     row.classList.remove(CLS.rowDragOver)
   })
   return row

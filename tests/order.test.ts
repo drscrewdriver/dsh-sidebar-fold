@@ -26,4 +26,15 @@ describe('settings-side order commit', () => {
     assert.match(index, /subscribeOrder/)
     assert.match(index, /scope\.set\('orderLabels'/)
   })
+  // Regression lock for 0.1.16: the drop reordered by DOM moves, and on a host
+  // where every row sits in its own wrapper the reference node belongs to another
+  // parent — `insertBefore` threw `NotFoundError`, the `try` ate it, and a drag
+  // highlighted its target while the column never moved.
+  it('reorders with CSS order, never by moving the host nodes', () => {
+    const fold = readFileSync(join(root, 'src/client/fold.ts'), 'utf8')
+    // Comments are allowed to describe the old bug; running code is not.
+    const code = fold.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    assert.doesNotMatch(code, /insertBefore/)
+    assert.match(code, /style\.order = /)
+  })
 });
