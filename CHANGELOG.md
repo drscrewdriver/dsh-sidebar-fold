@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.18 (2026-11-27)
+
+**修复：0.1.17 真机回归——「更多」飘到列首、拖动方向反 / 拖不动。**
+
+- 缺陷 1（更多飘顶）：「更多」按钮的父节点是 `span.moreAnchor`，不是 `div._panelEntry`，`foldTarget()` 原样返回 button；rank 写在 button 上无效，而真正的 flex item（span）留在 `order:0`，比其它行的 `1..N` 都小 → 顶到列首。改法：新增 `flexItemOf()` 从 `foldTarget` 结果向上走到 `.panelList` 的直接子节点，rank 落在真 flex item；并把列内非本行的 chrome（moreAnchor 等）补 `rank = 行数 + 1`，不再留默认 `order:0`。
+- 缺陷 2/3（方向反 / 拖不动）：`drop` 用 `rowsOf(nav)` 的 DOM 序算新序，但用户按视觉序（`style.order`）拖；两序相反时移动量互相抵消。改法：`drop` 改从 `orderedRows(all, config.orderLabels)`（当前屏幕所见）算 `reorderLabels`。
+- 回归测试：`tests/order-apply.test.ts` 新增 `nested()` 桩（DOM 序与视觉序互逆 + header 在 span 里）与 3 条断言（moreAnchor 拿最大 rank 且 button 不写、互逆序下拖动能换序、清空时含 chrome 全部撤 rank）。共 58/58 通过。
+- 真机复验（farm 0.2.2-rc.3 / 3121）：moreAnchor `order=3`、`top=184`（列内最大，稳在列尾）；拖「插件→自动化任务」视觉序 `[自动化任务,插件]→[插件,自动化任务]`，拖回可还原；F5 刷新后顺序保持；控制台 0 错误。
+
 ## 0.1.17 (2026-11-27)
 
 **修复：拖动排序只有反馈、顺序不变。**
