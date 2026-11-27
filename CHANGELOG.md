@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.19-rc.1 (2026-11-27)
+
+**候选版：设置面板失活三版本（0.1.16–0.1.18）的根因修复 + 设置卡片页底排序。**
+
+- 根因：`settings-card.ts` 用 `./star-row-copy.ts` 的符号，但拼接式 bundle 的 `MODULES` 清单漏了该副本；`stripRelativeImports` 删掉 import 后 bundle 照样能 parse、单测全绿，浏览器半体却在运行时抛 `ReferenceError`，宿主把崩掉的 slot 塞进 `data-slot-error` —— 页面只表现为「设置卡片整段不出现」。已把 `star-row-copy.ts` 补进 `MODULES`（leaf-first），插件详情页设置卡片恢复渲染。
+- 防复发：build 期新增「相对 import ⊆ MODULES」闸，凡被 `./x.ts` 引用却未拼接的模块直接 build 失败；已做破坏自证（移除该模块 → exit 1 并点名 `star-row-copy.ts`，还原 → exit 0，产物 `lib/client.js` 7 modules / 130749 chars）。
+- 设置卡片位置：宿主把详情页 section 写死为 `README → config → components → version → source`，卡片夹在 README 与组件列表之间；容器 `detailSections` 是 flex column，纯 CSS `order:99`（`section[data-plugin-config]`，避开行详情页的 div 容器）把配置卡片压到页底，不碰宿主 DOM。
+- 门禁：lint / typecheck / 58 tests / build / verify / surface-classes 全绿。
+
 ## 0.1.18 (2026-11-27)
 
 **修复：0.1.17 真机回归——「更多」飘到列首、拖动方向反 / 拖不动。**
