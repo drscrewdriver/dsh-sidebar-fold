@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.21-rc.1 (2026-11-27)
+
+**候选版：设置页入口行支持上下键调整顺序。**
+
+- 新增 `makeKeyboardRow()`：行加 `tabindex=0`，`ArrowUp`/`ArrowDown` 越界直接 return（首末行不回绕、不报错）、合法移动 `preventDefault()` 挡页面滚动，随后走与拖动**相同**的 `reorderLabels` + `applyConfig` → `paint()` → `commit()` 链路，两套顺序语义不会打架。
+- 焦点恢复（本特性的主难点）：`commit()` 在保存确认后还会异步再 `paint()` 一次，故单纯在按键处 rAF 聚焦会被第二次重建打掉。改为模块级 `pendingFocusLabel` + **在 `paint()` 内** rAF 聚焦目标行（按 `data-dshsf-row` 定位，新增 `ATTR.rowLabel`），由 `commit()` 的最终 paint 后清空。焦点跟随**被移动的那一行**（而非它原来的邻居），连续两次 Arrow 会把同一行继续上移/下移，而不是来回弹。
+- 回归测试：`tests/settings-keyboard.test.ts` 新增 4 条断言锁越界、`preventDefault`、共用链路、跨 paint 焦点恢复；套件 66/66 通过。
+- rc 实测（farm 3121）：合成 `KeyboardEvent` 连按两次（第二次直接派发给 `document.activeElement`，不再手工 focus），焦点全程留在被移动行的 DIV（`data-dshsf-row` 匹配），`preventDefault` 生效，行序每次都变；首行 ArrowUp / 末行 ArrowDown 无移动、无报错；F5 后顺序保持；`data-slot-error` 0 个。
+
 ## 0.1.20 (2026-11-27)
 
 **修复：设置卡片入口行「写了拖动却拖不动」的死代码。**

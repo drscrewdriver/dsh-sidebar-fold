@@ -187,7 +187,10 @@ function sameValue(left: unknown, right: unknown): boolean {
  */
 function commit(fields: Record<string, unknown>): void {
   const scope = scopeRef.scope
-  if (scope === undefined) return
+  if (scope === undefined) {
+    pendingFocusLabel = ''
+    return
+  }
   saveState = { status: 'saving', fields }
   paint()
   const writes = Object.entries(fields).map(([field, value]) =>
@@ -207,6 +210,7 @@ function commit(fields: Record<string, unknown>): void {
   void Promise.race([Promise.all(writes).then((results) => results.every(Boolean)), confirmed]).then((ok) => {
     saveState = { status: ok ? 'saved' : 'error', fields }
     paint()
+    pendingFocusLabel = '' // the async save-confirmation paint was the last one
   })
 }
 
@@ -286,6 +290,13 @@ function writeRowState(rows: ReturnType<typeof roster>, label: string, next: Row
 let dragSource = ''
 
 /**
+ * A keyboard reorder asks every subsequent paint (the synchronously triggered
+ * one and the async save-confirmation repaint in commit()) to restore focus to
+ * the moved row. paint() is the only place that knows when the new DOM exists.
+ */
+let pendingFocusLabel = ''
+
+/**
  * Attach a drag handle to a settings row so the visible list can be reordered.
  *
  * The row itself is the drag source and drop target; both surfaces (sidebar and
@@ -336,6 +347,35 @@ function makeDraggableRow(row: HTMLElement, label: string, rows: ReturnType<type
   return row
 }
 
+/**
+ * Keyboard reorder for settings rows. Mirrors the DnD path onto the same
+ * reorderLabels + commit chain so the two surfaces never disagree on order.
+ *
+ * `paint()` rebuilds the whole card with replaceChildren(), so a synchronous
+ * `.focus()` hits a node that is about to be detached. Remember the moved
+ * label, then re-focus it on the next animation frame once the new row exists.
+ * Keeping focus on the *moved* row (rather than its neighbour) is deliberate:
+ * successive Arrow presses then keep moving that row instead of bouncing back.
+ */
+function makeKeyboardRow(row: HTMLElement, label: string, rows: ReturnType<typeof roster>): HTMLElement {
+  row.setAttribute('tabindex', '0')
+  row.addEventListener('keydown', (e: any) => {
+    if (e?.key !== 'ArrowUp' && e?.key !== 'ArrowDown') return
+    const labels = rows.map((entry) => entry.label)
+    const idx = labels.indexOf(label)
+    if (idx < 0) return
+    const to = e.key === 'ArrowUp' ? idx - 1 : idx + 1
+    if (to < 0 || to >= labels.length) return // first/last row: no wrap, no error
+    e.preventDefault() // ArrowUp/Down would otherwise scroll the page
+    const next = reorderLabels(labels, label, labels[to])
+    pendingFocusLabel = label
+    applyConfig({ ...effectiveConfig(), orderLabels: next })
+    paint()
+    commit({ orderLabels: next })
+  })
+  return row
+}
+
 /** Build one three-state entry row (shared by paint and the DnD repaint). */
 function buildEntry(entry: ReturnType<typeof roster>[number], rows: ReturnType<typeof roster>): HTMLElement {
   const canHide = hostHasPin()
@@ -361,7 +401,8 @@ function buildEntry(entry: ReturnType<typeof roster>[number], rows: ReturnType<t
       (next) => writeRowState(rows, entry.label, next as RowState),
     ),
   )
-  return makeDraggableRow(built, entry.label, rows)
+  built.setAttribute(ATTR.rowLabel, entry.label)
+  return makeKeyboardRow(makeDraggableRow(built, entry.label, rows), entry.label, rows)
 }
 
 /** Paint (or repaint) the card body from the current values and the live roster. */
@@ -476,6 +517,18 @@ function paint(): void {
   const starRow = mountStarRow()
   starRow.setAttribute(ATTR.own, '')
   cardRoot.appendChild(starRow)
+
+  // Keyboard reorder: restore focus after the new rows exist. commit() fires a
+  // second (async) paint once the save confirms, so this has to live in paint()
+  // rather than in the key handler — otherwise that later repaint drops focus.
+  if (pendingFocusLabel !== '') {
+    const focusLabel = pendingFocusLabel
+    requestAnimationFrame(() => {
+      const target = [...(cardRoot?.querySelectorAll(`[${ATTR.rowLabel}]`) ?? [])]
+        .find((el) => el.getAttribute(ATTR.rowLabel) === focusLabel)
+      ;(target as HTMLElement | undefined)?.focus()
+    })
+  }
 }
 
 /**

@@ -74,6 +74,8 @@ export const ATTR = Object.freeze({
   dnd: 'data-dshsf-dnd',
   /** On a row wrapper carrying the flex `order` we wrote for a persisted rank. */
   order: 'data-dshsf-order',
+  /** On a settings-card row, holding its label so keyboard reorder can restore focus. */
+  rowLabel: 'data-dshsf-row',
 })
 
 /** Selector fragments (hash-tolerant). */
