@@ -25,7 +25,7 @@ const outFile = join(root, 'lib', 'client.js')
 const packageName = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).name
 
 /** Concatenation order: leaf modules first, entry last. */
-const MODULES = ['constants.ts', 'locales.ts', 'fold.ts', 'settings-card.ts', 'menu-entry.ts', 'index.ts']
+const MODULES = ['constants.ts', 'locales.ts', 'fold.ts', 'star-row-copy.ts', 'settings-card.ts', 'menu-entry.ts', 'index.ts']
 
 /**
  * Shared modules the host's module table serves into every browser half.
@@ -107,8 +107,36 @@ function composeBundle(parts) {
 
 const ts = loadTypeScript()
 const parts = []
+
+// --- relative-import coverage ---------------------------------------------
+// `stripRelativeImports` deletes every `./x.ts` import because the modules are
+// concatenated — but only if that module is actually concatenated. A module
+// imported and NOT listed in MODULES leaves a dangling call site: the bundle
+// parses, every unit test passes, and the client half throws
+// `ReferenceError: <fn> is not defined` at runtime. The host then parks the
+// crashed slot in `data-slot-error`, so the symptom is a settings card that
+// silently never appears — measured on dsh-sidebar-fold 0.1.16-0.1.18, where
+// `star-row-copy.ts` was imported by settings-card.ts and missing here.
+const imported = new Map()
 for (const name of MODULES) {
-  parts.push(transpile(ts, name, await readFile(join(srcDir, name), 'utf8')))
+  const source = await readFile(join(srcDir, name), 'utf8')
+  for (const match of source.matchAll(/from\s+['"]\.\/([^'"]+)['"]/g)) {
+    const dep = match[1]
+    if (!MODULES.includes(dep)) {
+      throw new Error(
+        `${name} imports './${dep}' but MODULES does not concatenate it — ` +
+        `add it (leaf-first) or the bundle ships a dangling call that only fails at runtime`,
+      )
+    }
+    if (!imported.has(dep)) imported.set(dep, [])
+    imported.get(dep).push(name)
+  }
+  parts.push(transpile(ts, name, source))
+}
+for (const name of MODULES) {
+  if (!imported.has(name) && name !== 'index.ts') {
+    console.warn(`warning: ${name} is concatenated but nothing imports it (dead weight)`)
+  }
 }
 
 const bundle = composeBundle(parts)
