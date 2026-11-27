@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.1.21-rc.1 (2026-11-27)
+## 0.1.21 (2026-11-27)
 
-**候选版：设置页入口行支持上下键调整顺序。**
+**特性：设置页入口行支持上下键调整顺序。**
+
+- 发版节奏：`0.1.21-rc.1` 先行、验证通过后转正式 `0.1.21`。本段即正式版说明。
 
 - 新增 `makeKeyboardRow()`：行加 `tabindex=0`，`ArrowUp`/`ArrowDown` 越界直接 return（首末行不回绕、不报错）、合法移动 `preventDefault()` 挡页面滚动，随后走与拖动**相同**的 `reorderLabels` + `applyConfig` → `paint()` → `commit()` 链路，两套顺序语义不会打架。
 - 焦点恢复（本特性的主难点）：`commit()` 在保存确认后还会异步再 `paint()` 一次，故单纯在按键处 rAF 聚焦会被第二次重建打掉。改为模块级 `pendingFocusLabel` + **在 `paint()` 内** rAF 聚焦目标行（按 `data-dshsf-row` 定位，新增 `ATTR.rowLabel`），由 `commit()` 的最终 paint 后清空。焦点跟随**被移动的那一行**（而非它原来的邻居），连续两次 Arrow 会把同一行继续上移/下移，而不是来回弹。
