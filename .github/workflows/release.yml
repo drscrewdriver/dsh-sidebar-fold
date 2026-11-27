@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write            # provenance green badge (no-op when not used)
 
 concurrency:
   group: release-${{ github.repository }}
@@ -74,6 +75,17 @@ jobs:
       - name: 打包清单
         run: npm pack --dry-run
 
+      # ④.5 发布通道：版本号含 -rc → rc 预发布线（不动 latest / 线标签 / Latest 徽标）
+      - name: 发布通道判定
+        run: |
+          case "$VERSION" in
+            *-rc*) echo "DIST_TAG=rc"      >> "$GITHUB_ENV"
+                   echo "PRERELEASE=true"  >> "$GITHUB_ENV"
+                   echo "::notice::rc 版本 $VERSION → 发布到 rc 标签（latest 不受影响）" ;;
+            *)     echo "DIST_TAG=latest"  >> "$GITHUB_ENV"
+                   echo "PRERELEASE=false" >> "$GITHUB_ENV" ;;
+          esac
+
       # ⑤ 幂等：同版本已存在则整体跳过发布动作
       - name: 幂等检查
         id: guard
@@ -85,15 +97,15 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # ⑥ 发布
+      # ⑥ 发布（rc → --tag rc，正式版 → --tag latest）
       - name: npm publish
         if: steps.guard.outputs.exists == 'false' && (github.event_name == 'push' || inputs.dry_run == false)
-        run: npm publish --registry https://registry.npmjs.org
+        run: npm publish --tag "$DIST_TAG" --registry https://registry.npmjs.org
 
-      # ⑦ dist-tag 同步（读侧滞后 → 重试；失败只告警不判死，因为 publish 已成功）
+      # ⑦ dist-tag 同步（读侧滞后 → 重试；rc 线跳过，不动 latest / 线标签）
       - name: 同步 dsh-* 线标签
         id: disttag
-        if: steps.guard.outputs.exists == 'false' && (github.event_name == 'push' || inputs.dry_run == false)
+        if: steps.guard.outputs.exists == 'false' && env.PRERELEASE == 'false' && (github.event_name == 'push' || inputs.dry_run == false)
         run: |
           set -uo pipefail
           REG=https://registry.npmjs.org
@@ -130,9 +142,12 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/release-notes.mjs --version "$VERSION" --tag "$TAG" --out notes.md
+          PRE_FLAG=""
+          if [ "${PRERELEASE:-false}" = "true" ]; then PRE_FLAG="--prerelease"; fi
           gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
-          gh release edit "$TAG" --latest
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md $PRE_FLAG
+          # 正式版才设 Latest 徽标；rc 预发布不动 Latest
+          if [ "${PRERELEASE:-false}" != "true" ]; then gh release edit "$TAG" --latest; fi
 
       # ⑨ 事实表
       - name: Job Summary
