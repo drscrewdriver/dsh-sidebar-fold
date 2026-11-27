@@ -278,6 +278,14 @@ function writeRowState(rows: ReturnType<typeof roster>, label: string, next: Row
 }
 
 /**
+ * The drag session is shared by all rows: HTML5 DnD fires `dragstart` on the
+ * source row but `dragover`/`drop` on the *target* row, so a per-row closure
+ * would always read the target's own (empty) source and never call
+ * `preventDefault()` — the browser then refuses the drop and dragging is dead.
+ */
+let dragSource = ''
+
+/**
  * Attach a drag handle to a settings row so the visible list can be reordered.
  *
  * The row itself is the drag source and drop target; both surfaces (sidebar and
@@ -294,14 +302,16 @@ function makeDraggableRow(row: HTMLElement, label: string, rows: ReturnType<type
   // A grab cursor, not the drag *feedback* class: dimming the row permanently
   // made every settings row look disabled.
   row.classList.add(CLS.rowHandle)
-  let source = ''
   row.addEventListener('dragstart', (e: any) => {
-    source = label
+    dragSource = label
     row.classList.add(CLS.rowDrag)
-    if (e?.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+    if (e?.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', label) // Safari/some hosts need this to fire drop
+    }
   })
   row.addEventListener('dragover', (e: any) => {
-    if (source === '' || source === label) return
+    if (dragSource === '' || dragSource === label) return
     e?.preventDefault?.()
     if (e?.dataTransfer) e.dataTransfer.dropEffect = 'move'
     row.classList.add(CLS.rowDragOver)
@@ -310,8 +320,8 @@ function makeDraggableRow(row: HTMLElement, label: string, rows: ReturnType<type
   row.addEventListener('drop', (e: any) => {
     e?.preventDefault?.()
     row.classList.remove(CLS.rowDragOver)
-    const from = source
-    source = ''
+    const from = dragSource
+    dragSource = ''
     if (from === '' || from === label) return
     const next = reorderLabels(rows.map((entry) => entry.label), from, label)
     applyConfig({ ...effectiveConfig(), orderLabels: next })
@@ -319,7 +329,7 @@ function makeDraggableRow(row: HTMLElement, label: string, rows: ReturnType<type
     commit({ orderLabels: next })
   })
   row.addEventListener('dragend', () => {
-    source = ''
+    dragSource = ''
     row.classList.remove(CLS.rowDrag)
     row.classList.remove(CLS.rowDragOver)
   })

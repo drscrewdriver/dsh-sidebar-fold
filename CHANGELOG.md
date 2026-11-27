@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.20-rc.1 (2026-11-27)
+
+**候选版：修复设置卡片入口行「写了拖动却拖不动」的死代码。**
+
+- 根因：`makeDraggableRow()` 把 `let source = ''` 声明在函数体内，每次调用生成一个 per-row 闭包；`dragstart` 写的是源行自己的 `source`，而 `dragover`/`drop` 挂在目标行、读的是目标行自己恒为 `''` 的 `source` → 早退且不 `preventDefault()` → 浏览器不放行 drop，全程不报错。
+- 改法：`dragSource` 提为模块级共享会话状态；`dragstart` 补 `dataTransfer.setData('text/plain', label)`（Safari/部分宿主缺它不触发 drop）；`drop`/`dragend` 清空状态防残留。拖动与侧边栏继续共用 `reorderLabels` + `applyConfig` → `paint()` → `commit()` 同一链路。
+- 回归测试：`tests/settings-drag.test.ts` 新增 4 条断言锁闭包作用域、`preventDefault`、`setData`、状态清理；套件 62/62 通过。
+- rc 实测（farm 3121，0.1.19-rc.1 产物上复现修复）：合成 HTML5 DnD 把「自动化任务→插件」视觉序 `[插件,自动化任务]→[自动化任务,插件]`，`dragover.defaultPrevented=true`、`dataTransfer` 有值；F5 后新序保持；拖动后三档按钮点击照常切换；`data-slot-error` 0 个。
+
 ## 0.1.19 (2026-11-27)
 
 **修复：设置面板失活三版本（0.1.16–0.1.18）的根因 + 设置卡片页底排序。**
